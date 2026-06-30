@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streaming Events — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    .flow {
+      margin-top: 2rem;
+      padding: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    .flow h2 {
+      font-size: 0.75rem;
+      font-family: system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      border: none;
+      padding: 0;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Streaming Events</h1>
+  <p class="subtitle">SSE events from <code>POST /v1/responses</code> with <code>stream: true</code>.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Event type</th>
+        <th>When / what to do</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>response.created</code></td>
+        <td>Stream opened. Response id is available; generation not finished.</td>
+      </tr>
+      <tr>
+        <td><code>response.output_text.delta</code></td>
+        <td>Text chunk in <code>event.delta</code>. <strong>Append</strong> to your UI string.</td>
+      </tr>
+      <tr>
+        <td><code>response.output_text.done</code></td>
+        <td>One text part finalized. Full text in <code>event.text</code>.</td>
+      </tr>
+      <tr>
+        <td><code>response.completed</code></td>
+        <td>Done. Full response in <code>event.response</code> (id, usage, <code>output_text</code>).</td>
+      </tr>
+      <tr>
+        <td><code>response.failed</code></td>
+        <td>Error. Read <code>event.response</code> for details; show error in UI.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const stream = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: "Your prompt",
+  stream: true,
+});
+
+for await (const event of stream) {
+  if (event.type === "response.output_text.delta") {
+    process.stdout.write(event.delta); // UI: append to state
+  }
+}</pre>
+
+  <div class="flow">
+    <h2>UI pattern</h2>
+    <p>
+      <strong>Start</strong> → show empty / loading state<br>
+      <strong>Each delta</strong> → <code>text += event.delta</code> (or React <code>setText(t => t + delta)</code>)<br>
+      <strong>Completed</strong> → hide spinner, store <code>event.response.id</code> for follow-up turns<br>
+      <strong>Failed</strong> → show error, allow retry
+    </p>
+  </div>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0002-stream-a-response.html">Lesson 2 — Stream a Response</a> ·
+      Docs: <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses guide</a>
+    </p>
+  </footer>
+</body>
+</html>

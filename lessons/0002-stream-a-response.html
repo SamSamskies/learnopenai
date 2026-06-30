@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2 — Stream a Response</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 2 · ~15 minutes</div>
+  <h1>Stream a Response</h1>
+
+  <p class="epigraph">
+    Users don't wait for the whole answer.
+    They watch it arrive — word by word.
+  </p>
+
+  <p>
+    In <a href="0001-first-responses-api-call.html">Lesson 1</a> you waited for the full
+    response object. That works for scripts, but chat products feel broken without
+    <strong>streaming</strong>: text appearing incrementally while the model still generates.
+  </p>
+
+  <p>
+    Your mission includes shipping a streaming UI. This lesson teaches the server-side
+    primitive — the same event loop every chat interface builds on.
+  </p>
+
+  <h2>Blocking vs streaming</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Mode</th>
+        <th>What you get</th>
+        <th>When to use</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Blocking (default)</td>
+        <td>One <code>Response</code> object when generation finishes</td>
+        <td>Batch jobs, short prompts, backend transforms</td>
+      </tr>
+      <tr>
+        <td>Streaming</td>
+        <td>A sequence of <strong>events</strong> over SSE</td>
+        <td>Chat UIs, anything the user watches live</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Streaming doesn't make the model faster — it makes <em>perceived</em> latency lower.
+    The first token often arrives in hundreds of milliseconds; the user reads while
+    the rest generates.
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Docs</a>.
+  </p>
+
+  <h2>Turn streaming on</h2>
+
+  <p>Add one parameter to the call you already know:</p>
+
+  <pre class="example">const stream = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: "Explain why streaming feels faster in three short sentences.",
+  stream: true,  // &lt;— this changes everything
+});</pre>
+
+  <p>
+    Instead of a <code>Response</code>, you get an async iterable of
+    <strong>stream events</strong>. Loop with <code>for await</code>:
+  </p>
+
+  <pre class="example">for await (const event of stream) {
+  console.log(event.type);
+}</pre>
+
+  <p>
+    You'll see types like <code>response.created</code>,
+    <code>response.output_text.delta</code>, and <code>response.completed</code>.
+    Keep the <a href="../reference/streaming-events.html">streaming events reference</a>
+    open — you'll return to it often.
+  </p>
+
+  <h2>The event that matters for text</h2>
+
+  <p>
+    For a plain text reply, you mostly care about one event:
+    <code>response.output_text.delta</code>. Each one carries a small string in
+    <code>event.delta</code>.
+  </p>
+
+  <pre class="example">let text = "";
+
+for await (const event of stream) {
+  if (event.type === "response.output_text.delta") {
+    process.stdout.write(event.delta); // terminal: print as it arrives
+    text += event.delta;               // UI: same idea — append to state
+  }
+}</pre>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    In React, each delta is <code>setReply(prev => prev + event.delta)</code>.
+    In a browser chat UI, your API route forwards SSE chunks to the client the same way.
+    The append pattern is identical whether you're in Node or the DOM.
+  </div>
+
+  <h2>Know when you're done</h2>
+
+  <p>
+    <code>response.completed</code> fires once at the end. The full response object
+    lives on <code>event.response</code> — same shape as Lesson 1's blocking call
+    (<code>id</code>, <code>usage</code>, <code>output_text</code>).
+  </p>
+
+  <pre class="example">if (event.type === "response.completed") {
+  console.log("id:", event.response.id);
+  console.log("tokens:", event.response.usage?.total_tokens);
+}</pre>
+
+  <p>
+    Save the <code>resp_…</code> id here if you need multi-turn state later.
+    Your accumulated <code>text</code> string should match
+    <code>event.response.output_text</code>.
+  </p>
+
+  <h2>What you'll ignore (for now)</h2>
+
+  <p>
+    Streams also emit tool-call deltas, reasoning summaries, and image events.
+    Filter by <code>event.type</code> — only handle what your product needs.
+    Tool streaming comes in a later lesson.
+  </p>
+
+  <div class="callout warn">
+    <strong>Errors</strong><br>
+    On failure you'll get <code>response.failed</code> instead of
+    <code>response.completed</code>. Always handle both in production UIs.
+  </div>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. stream: true switches the endpoint from one final object to an SSE event sequence.","false":"Background mode is for long async jobs — not the same as token streaming."}'>
+    <h3>1. How do you enable streaming?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Set the stream parameter true</button>
+      <button data-correct="false">Wait for the full response</button>
+      <button data-correct="false">Enable the background mode first</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. response.output_text.delta carries event.delta — the incremental text chunk.","false":"response.created only signals the stream opened — no text delta yet."}'>
+    <h3>2. Which event has text chunks?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Check response output text delta</button>
+      <button data-correct="false">Read the response created event</button>
+      <button data-correct="false">Wait for the response completed</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Append each delta — that is how every chat UI builds the visible reply.","false":"Replacing or ignoring deltas would make the UI jump or stay blank until the end."}'>
+    <h3>3. What should the UI do?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Append each delta to visible text</button>
+      <button data-correct="false">Replace the full text every time</button>
+      <button data-correct="false">Ignore deltas until stream completes</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> watch text arrive token by token in your terminal.</p>
+    <ol>
+      <li>Run: <code>node practice/0002-stream.mjs</code></li>
+      <li>Watch text print live (not all at once at the end)</li>
+      <li>Confirm the final <code>output_text matches: true</code> line</li>
+      <li>Log every <code>event.type</code> once to see the full event sequence</li>
+      <li>Change the prompt to something longer and notice time-to-first-token</li>
+    </ol>
+    <p>
+      When you see words appearing incrementally, you have the core loop every
+      streaming chat product uses. Lesson 3 will wire this toward a real UI.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses guide</a>
+    and
+    <a href="https://platform.openai.com/docs/api-reference/responses-streaming">Responses streaming API reference</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0001-first-responses-api-call.html">Lesson 1 — First API Call</a> ·
+      Reference: <a href="../reference/streaming-events.html">Streaming Events</a> ·
+      Next: Lesson 3 — Multi-turn state with <code>previous_response_id</code> (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
