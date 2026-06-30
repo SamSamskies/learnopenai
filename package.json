@@ -1,0 +1,25 @@
+{
+  "name": "learnopenai",
+  "version": "1.0.0",
+  "description": "A teaching workspace for mastering the OpenAI platform as an AI Product Engineer.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SamSamskies/learnopenai.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/SamSamskies/learnopenai/issues"
+  },
+  "homepage": "https://github.com/SamSamskies/learnopenai#readme",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "openai": "^6.45.0"
+  }
+}

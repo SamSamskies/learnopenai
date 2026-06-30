@@ -11,3 +11,4 @@ const response = await client.responses.create({
 console.log("output_text:", response.output_text);
 console.log("response id:", response.id);
 console.log("tokens:", response.usage?.total_tokens);
+console.log(JSON.stringify(response, null, 2)) 
