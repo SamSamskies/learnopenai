@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3 — Chain a Conversation</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 3 · ~15 minutes</div>
+  <h1>Chain a Conversation</h1>
+
+  <p class="epigraph">
+    A chat product isn't one question.
+    It's a thread — and the API needs to remember what came before.
+  </p>
+
+  <p>
+    In <a href="0001-first-responses-api-call.html">Lesson 1</a> you made a single call.
+    In <a href="0002-stream-a-response.html">Lesson 2</a> you watched text arrive live.
+    Real products need <strong>multi-turn state</strong>: the model must know what
+    the user said two messages ago without you re-pasting the whole transcript every time.
+  </p>
+
+  <p>
+    The Responses API gives you three ways to carry context.
+    This lesson teaches the simplest — <code>previous_response_id</code> — because
+    it's what most chat UIs start with.
+  </p>
+
+  <h2>The old way (Chat Completions mental model)</h2>
+
+  <p>
+    If you've seen Chat Completions tutorials, multi-turn looked like this:
+    grow a <code>messages[]</code> array, append the assistant reply, append the
+    next user message, send the <em>entire</em> array on every request.
+  </p>
+
+  <pre class="example">messages.push(assistantMessage);
+messages.push({ role: "user", content: "And its population?" });
+// send ALL of messages again</pre>
+
+  <p>
+    That still works in Responses (pass prior <code>output</code> items back into
+    <code>input</code>), but it's your job to manage the growing transcript.
+    For most chat products there's a cleaner option.
+  </p>
+
+  <h2>Chain with previous_response_id</h2>
+
+  <p>
+  Save the <code>resp_…</code> id from each response. On the next turn, pass
+  only the <strong>new</strong> user message — OpenAI replays prior context
+  server-side.
+    <a href="https://platform.openai.com/docs/guides/conversation-state">Docs</a>.
+  </p>
+
+  <pre class="example">const first = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: "My favorite color is teal. Remember this.",
+  store: true,
+});
+
+const second = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: "What is my favorite color?",
+  previous_response_id: first.id,  // &lt;— chains the thread
+  store: true,
+});</pre>
+
+  <p>
+    Turn 2's <code>input</code> is just the follow-up question — not the full
+    history. The model should answer "teal" because it can see turn 1 through
+    the chain.
+  </p>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    Keep <code>lastResponseId</code> in React state (or your DB per thread).
+    Each send: POST with <code>input: userMessage</code> and
+    <code>previous_response_id: lastResponseId</code>.
+    On success: <code>setLastResponseId(response.id)</code>.
+    "New chat" = clear the id and omit <code>previous_response_id</code>.
+  </div>
+
+  <h2>Three state strategies (pick one per product)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Approach</th>
+        <th>You send each turn</th>
+        <th>When to use</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>previous_response_id</code></td>
+        <td>New user message only</td>
+        <td>Default for chat threads</td>
+      </tr>
+      <tr>
+        <td>Manual item replay</td>
+        <td>Prior <code>output</code> + new message</td>
+        <td>Trimming context, full control, <code>store: false</code></td>
+      </tr>
+      <tr>
+        <td>Conversations API</td>
+        <td>Messages on a <code>conversation</code> object</td>
+        <td>Threads that survive across sessions/devices</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Keep the <a href="../reference/conversation-state.html">conversation state reference</a>
+    handy — you'll choose between these as products grow.
+  </p>
+
+  <h2>Gotchas that bite product engineers</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Detail</th>
+        <th>Why it matters</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>store: true</code></td>
+        <td>Default. Server must store responses to resolve <code>previous_response_id</code>. Use <code>store: false</code> only when you replay context yourself.</td>
+      </tr>
+      <tr>
+        <td><code>instructions</code></td>
+        <td>Top-level system prompts <strong>do not</strong> carry over the chain. Resend stable <code>instructions</code> on every turn.</td>
+      </tr>
+      <tr>
+        <td>Token billing</td>
+        <td>Prior turns still count as input tokens each request. Chaining saves you from managing arrays — not from economics.</td>
+      </tr>
+      <tr>
+        <td>Where the id comes from</td>
+        <td>Blocking call: <code>response.id</code>. Streaming: <code>event.response.id</code> on <code>response.completed</code> (Lesson 2).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>Not free context</strong><br>
+    Even with <code>previous_response_id</code>, reconstructed history is billed
+    as input. Repeated prefixes may hit
+    <a href="https://platform.openai.com/docs/guides/prompt-caching">prompt caching</a>
+    discounts — a later lesson topic.
+  </div>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. previous_response_id tells OpenAI to replay prior context server-side.","false":"Resending the full history is manual replay — a different strategy."}'>
+    <h3>1. How do you continue a thread?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Pass previous response id param</button>
+      <button data-correct="false">Resend full messages array</button>
+      <button data-correct="false">Enable the background mode now</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Only the new user turn goes in input — the server handles history.","false":"The whole transcript is manual replay, not previous_response_id."}'>
+    <h3>2. What goes in input on turn 2?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Only the new user message</button>
+      <button data-correct="false">Resend the entire chat history</button>
+      <button data-correct="false">Send an empty input string</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Chaining manages state, not billing — prior tokens still count.","false":"Stored responses are not free — input tokens are still billed."}'>
+    <h3>3. What about token billing?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Earlier turns still bill input</button>
+      <button data-correct="false">Only newest messages get billed</button>
+      <button data-correct="false">Chained turns avoid all billing</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> prove the model remembers across turns.</p>
+    <ol>
+      <li>Run: <code>node practice/0003-chain.mjs</code></li>
+      <li>Confirm turn 2 answers with "teal" (or similar)</li>
+      <li>Compare <code>usage.total_tokens</code> — turn 2 should be higher than turn 1</li>
+      <li>Change turn 2's question to something that only makes sense after turn 1</li>
+      <li>Break it on purpose: omit <code>previous_response_id</code> and see the model forget</li>
+    </ol>
+    <p>
+      When turn 2 recalls turn 1 without you resending history, you have the
+      state primitive every chat backend needs. Lesson 4 will add
+      <code>instructions</code> and structured control over model behavior.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/conversation-state">Conversation state guide</a>
+    and
+    <a href="https://platform.openai.com/docs/guides/migrate-to-responses">Migrate to Responses API</a>
+    (multi-turn section).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0002-stream-a-response.html">Lesson 2 — Stream a Response</a> ·
+      Reference: <a href="../reference/conversation-state.html">Conversation State</a> ·
+      Next: Lesson 4 — System instructions (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -99,7 +99,7 @@ for await (const event of stream) {
     <p>
       <strong>Start</strong> → show empty / loading state<br>
       <strong>Each delta</strong> → <code>text += event.delta</code> (or React <code>setText(t => t + delta)</code>)<br>
-      <strong>Completed</strong> → hide spinner, store <code>event.response.id</code> for follow-up turns<br>
+      <strong>Completed</strong> → hide spinner, store <code>event.response.id</code> as <code>previous_response_id</code><br>
       <strong>Failed</strong> → show error, allow retry
     </p>
   </div>

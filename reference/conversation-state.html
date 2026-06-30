@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conversation State — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    .flow {
+      margin-top: 2rem;
+      padding: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    .flow h2 {
+      font-size: 0.75rem;
+      font-family: system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      border: none;
+      padding: 0;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Conversation State</h1>
+  <p class="subtitle">Three ways to carry context across turns in the Responses API.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Approach</th>
+        <th>You send each turn</th>
+        <th>Best for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>previous_response_id</code></td>
+        <td>Only the new user message (+ stable <code>instructions</code>)</td>
+        <td>Standard chat threads; simplest server-managed state</td>
+      </tr>
+      <tr>
+        <td>Manual item replay</td>
+        <td>Prior <code>output</code> items + new message in <code>input</code></td>
+        <td>Trimming context, custom state, <code>store: false</code></td>
+      </tr>
+      <tr>
+        <td>Conversations API</td>
+        <td>Messages on a durable <code>conversation</code> object</td>
+        <td>Long-lived threads across sessions/devices</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const first = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: "My favorite color is teal.",
+  store: true,
+});
+
+const second = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: "What is my favorite color?",
+  previous_response_id: first.id,
+  store: true,
+});</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Gotcha</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>store: true</code></td>
+        <td>Required for server-side chaining (default). Set <code>store: false</code> only when you manage state yourself.</td>
+      </tr>
+      <tr>
+        <td><code>instructions</code></td>
+        <td>Do <strong>not</strong> carry over via <code>previous_response_id</code>. Resend stable system prompts every turn.</td>
+      </tr>
+      <tr>
+        <td>Billing</td>
+        <td>Prior context still counts as input tokens each turn (prompt caching may discount repeated prefixes).</td>
+      </tr>
+      <tr>
+        <td>Retention</td>
+        <td>Stored responses kept ~30 days unless deleted. Conversations API persists longer.</td>
+      </tr>
+      <tr>
+        <td>Save the id</td>
+        <td>Store <code>response.id</code> (<code>resp_…</code>) after each turn — from blocking calls or <code>response.completed</code> when streaming.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="flow">
+    <h2>Chat product pattern</h2>
+    <p>
+      <strong>Per session</strong> → keep <code>lastResponseId</code> in memory or your DB<br>
+      <strong>Each user message</strong> → <code>input: newMessage</code>, <code>previous_response_id: lastResponseId</code><br>
+      <strong>On complete</strong> → <code>lastResponseId = response.id</code><br>
+      <strong>New chat</strong> → clear id, start fresh with no <code>previous_response_id</code>
+    </p>
+  </div>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0003-chain-a-conversation.html">Lesson 3 — Chain a Conversation</a> ·
+      Docs: <a href="https://platform.openai.com/docs/guides/conversation-state">Conversation state guide</a>
+    </p>
+  </footer>
+</body>
+</html>
