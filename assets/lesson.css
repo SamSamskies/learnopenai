@@ -1,0 +1,223 @@
+:root {
+  --text: #1a1a1a;
+  --muted: #555;
+  --accent: #10a37f;
+  --accent-light: #ecfdf5;
+  --border: #ddd;
+  --bg: #fafafa;
+  --card: #fff;
+  --correct: #166534;
+  --correct-bg: #f0fdf4;
+  --wrong: #991b1b;
+  --wrong-bg: #fef2f2;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Palatino Linotype", Palatino, Georgia, serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.6;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.lesson-meta {
+  font-family: system-ui, sans-serif;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+h1 {
+  font-weight: 400;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 1.25rem;
+}
+
+h2 {
+  font-weight: 400;
+  font-size: 1.15rem;
+  margin: 2rem 0 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+p { margin-bottom: 1rem; }
+
+.epigraph {
+  color: var(--muted);
+  font-style: italic;
+  border-left: 3px solid var(--border);
+  padding-left: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.callout {
+  background: var(--accent-light);
+  border: 1px solid #a7f3d0;
+  padding: 1rem 1.15rem;
+  font-size: 0.95rem;
+  margin: 1.5rem 0;
+}
+
+.callout strong { font-family: system-ui, sans-serif; font-size: 0.8rem; }
+
+.callout.warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  margin: 1.25rem 0;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  font-family: system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #f5f5f5;
+}
+
+tr:last-child td { border-bottom: none; }
+
+pre.example {
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 1rem 1.1rem;
+  white-space: pre-wrap;
+  line-height: 1.55;
+  margin: 1rem 0;
+}
+
+.steps {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1.25rem 0;
+}
+
+.step {
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 0.85rem 1.1rem;
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.step strong {
+  font-family: system-ui, sans-serif;
+  font-size: 0.82rem;
+  color: var(--accent);
+}
+
+.step span { font-size: 0.92rem; }
+
+.quiz {
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 1.25rem;
+  margin: 1.25rem 0;
+}
+
+.quiz h3 {
+  font-size: 1rem;
+  font-weight: 400;
+  margin-bottom: 1rem;
+}
+
+.quiz-options { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.quiz-options button {
+  font-family: system-ui, sans-serif;
+  font-size: 0.88rem;
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 0.15s;
+}
+
+.quiz-options button:hover { background: #f5f5f5; }
+
+.quiz-options button.correct {
+  background: var(--correct-bg);
+  border-color: var(--correct);
+  color: var(--correct);
+}
+
+.quiz-options button.wrong {
+  background: var(--wrong-bg);
+  border-color: var(--wrong);
+  color: var(--wrong);
+}
+
+.quiz-options button:disabled { cursor: default; opacity: 0.85; }
+
+.feedback {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  min-height: 1.4em;
+}
+
+.practice {
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.practice ol { padding-left: 1.25rem; }
+.practice li { margin-bottom: 0.5rem; }
+
+.practice code,
+code {
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 0.85em;
+  background: #eee;
+  padding: 0.1em 0.35em;
+}
+
+.source {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-top: 2rem;
+}
+
+.source a, footer a { color: var(--accent); }
+
+footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+@media print {
+  body { background: white; }
+  .quiz-options button { border: 1px solid #999; }
+}

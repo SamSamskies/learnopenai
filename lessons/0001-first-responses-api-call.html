@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1 — Your First Responses API Call</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 1 · ~15 minutes</div>
+  <h1>Your First Responses API Call</h1>
+
+  <p class="epigraph">
+    ChatGPT is a product. The Responses API is the platform.
+    AI Product Engineers ship on the platform.
+  </p>
+
+  <p>
+    Your mission is to build products on top of LLM APIs — not just chat in a UI.
+    Everything starts with one authenticated call to <code>POST /v1/responses</code>
+    and understanding what comes back.
+  </p>
+
+  <h2>Two products, one company</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th>URL</th>
+        <th>You pay for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ChatGPT</td>
+        <td>chatgpt.com</td>
+        <td>Go / Plus / Pro subscription</td>
+      </tr>
+      <tr>
+        <td>OpenAI Platform</td>
+        <td>platform.openai.com</td>
+        <td>Pay-as-you-go API credits</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>Not the same bill</strong><br>
+    A ChatGPT subscription does <em>not</em> fund API calls. For this course you need a
+    <a href="https://platform.openai.com">platform.openai.com</a> account with billing
+    set up (~$5 minimum prepaid credits).
+  </div>
+
+  <h2>Setup (one time)</h2>
+
+  <div class="steps">
+    <div class="step">
+      <strong>Step 1</strong>
+      <span>Create an account at <a href="https://platform.openai.com/signup">platform.openai.com</a>.</span>
+    </div>
+    <div class="step">
+      <strong>Step 2</strong>
+      <span>Go to <strong>Settings → Billing</strong>, add a payment method, and purchase at least $5 in credits. Set a monthly spend limit while learning.</span>
+    </div>
+    <div class="step">
+      <strong>Step 3</strong>
+      <span>Create an API key at <a href="https://platform.openai.com/api-keys">API Keys</a>. Copy it once — you won't see it again.</span>
+    </div>
+    <div class="step">
+      <strong>Step 4</strong>
+      <span>Export it in your terminal (add to <code>~/.zshrc</code> to persist):</span>
+    </div>
+  </div>
+
+  <pre class="example">export OPENAI_API_KEY="sk-..."</pre>
+
+  <p>
+    The official SDKs read <code>OPENAI_API_KEY</code> automatically.
+    Never commit this key to git or paste it into frontend code.
+  </p>
+
+  <h2>The call</h2>
+
+  <p>
+    The <strong>Responses API</strong> is OpenAI's current unified surface.
+    One endpoint handles text generation, tools, images, and server-side state.
+    <a href="https://platform.openai.com/docs/api-reference/responses/create">Docs</a>.
+  </p>
+
+  <pre class="example">import OpenAI from "openai";
+
+const client = new OpenAI();
+
+const response = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: "Say hello in exactly five words.",
+});
+
+console.log(response.output_text);</pre>
+
+  <p>
+    <code>gpt-4.1-nano</code> is cheap for learning (~$0.10 per million input tokens).
+    A few hundred practice calls cost pennies.
+  </p>
+
+  <h2>Read the response object</h2>
+
+  <p>Don't assume a flat string. A response is a structured object:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Property</th>
+        <th>What to notice</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>output_text</code></td>
+        <td>SDK convenience — the model's text. Start here.</td>
+      </tr>
+      <tr>
+        <td><code>output</code></td>
+        <td>Array of items: messages, tool calls, reasoning blocks. You'll parse this when you add tools.</td>
+      </tr>
+      <tr>
+        <td><code>id</code></td>
+        <td><code>resp_…</code> — you'll pass this back as <code>previous_response_id</code> for multi-turn conversations.</td>
+      </tr>
+      <tr>
+        <td><code>usage</code></td>
+        <td>Token counts. Watch these as you build — they are your unit economics.</td>
+      </tr>
+      <tr>
+        <td><code>status</code></td>
+        <td><code>completed</code>, <code>in_progress</code>, <code>failed</code>. Matters for streaming and background mode later.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Keep the <a href="../reference/responses-api-basics.html">Responses API reference</a>
+    open while you work.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. API keys live on platform.openai.com — separate from any ChatGPT subscription.","false":"Not quite. ChatGPT and the API are different products with separate billing."}'>
+    <h3>1. Where does your API key come from?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">The platform dashboard settings page</button>
+      <button data-correct="false">The ChatGPT subscription billing page</button>
+      <button data-correct="false">The Cursor editor preferences panel</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. output_text aggregates text from the output array — the SDK shortcut you want.","false":"choices is from the older Chat Completions API shape, not Responses."}'>
+    <h3>2. How do you read model text in JS?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Use the output_text property</button>
+      <button data-correct="false">Use the choices zero message</button>
+      <button data-correct="false">Use the completions array field</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. API usage draws from prepaid platform credits, metered per token.","false":"ChatGPT subscriptions and API billing are completely separate products."}'>
+    <h3>3. What bills when you call the API?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Platform prepaid API credit balance</button>
+      <button data-correct="false">ChatGPT Plus monthly subscription fee</button>
+      <button data-correct="false">Cursor Pro monthly subscription fee</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> run a real API call from your machine.</p>
+    <ol>
+      <li>In this repo, open a terminal at the project root</li>
+      <li>Install the SDK: <code>npm init -y && npm install openai</code></li>
+      <li>Confirm your key is set: <code>echo $OPENAI_API_KEY | head -c 8</code> (should print <code>sk-proj-</code> or similar)</li>
+      <li>Run the practice script: <code>node practice/0001-hello.mjs</code></li>
+      <li>Log the full response once: add <code>console.log(JSON.stringify(response, null, 2))</code> and find <code>output</code>, <code>usage</code>, and <code>id</code></li>
+    </ol>
+    <p>
+      You should see five words of greeting text, a <code>resp_…</code> id, and token counts.
+      That is a working integration — everything else in this course builds on it.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/quickstart">OpenAI Developer Quickstart</a>
+    and
+    <a href="https://platform.openai.com/docs/api-reference/responses/create">Responses API reference</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Next: Lesson 2 — Stream a Response to Your UI (coming soon) ·
+      Reference: <a href="../reference/responses-api-basics.html">Responses API Basics</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

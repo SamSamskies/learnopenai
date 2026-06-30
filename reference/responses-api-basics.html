@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Responses API — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    .flow {
+      margin-top: 2rem;
+      padding: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    .flow h2 {
+      font-size: 0.75rem;
+      font-family: system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      border: none;
+      padding: 0;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Responses API</h1>
+  <p class="subtitle">The unified OpenAI platform surface — text, tools, images, state.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Field / call</th>
+        <th>What it is</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>POST /v1/responses</code></td>
+        <td>Create a model response. Replaces most Chat Completions + Assistants patterns.</td>
+      </tr>
+      <tr>
+        <td><code>input</code></td>
+        <td>String or array of messages/items sent to the model.</td>
+      </tr>
+      <tr>
+        <td><code>model</code></td>
+        <td>Model ID, e.g. <code>gpt-4.1-nano</code>, <code>gpt-4o-mini</code>, <code>o4-mini</code>.</td>
+      </tr>
+      <tr>
+        <td><code>output</code></td>
+        <td>Array of output items: messages, tool calls, reasoning, etc.</td>
+      </tr>
+      <tr>
+        <td><code>output_text</code></td>
+        <td>SDK shortcut — aggregated text from all <code>output_text</code> parts.</td>
+      </tr>
+      <tr>
+        <td><code>id</code></td>
+        <td><code>resp_…</code> — pass as <code>previous_response_id</code> for multi-turn state.</td>
+      </tr>
+      <tr>
+        <td><code>usage</code></td>
+        <td><code>input_tokens</code>, <code>output_tokens</code>, <code>total_tokens</code>.</td>
+      </tr>
+      <tr>
+        <td><code>tools</code></td>
+        <td>Built-in (web search, file search) or custom function definitions.</td>
+      </tr>
+      <tr>
+        <td><code>store</code></td>
+        <td>When <code>true</code> (default), OpenAI stores the response server-side.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">import OpenAI from "openai";
+
+const client = new OpenAI(); // reads OPENAI_API_KEY
+
+const response = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: "Your prompt here",
+});
+
+console.log(response.output_text);</pre>
+
+  <div class="flow">
+    <h2>Mental model</h2>
+    <p>
+      <strong>Request</strong> → <code>input</code> + <code>model</code> (+ optional <code>tools</code>, <code>instructions</code>)<br>
+      <strong>Response</strong> → <code>output[]</code> items (not a flat string)<br>
+      <strong>Read text</strong> → <code>response.output_text</code> in JS/Python SDKs<br>
+      <strong>Continue thread</strong> → <code>previous_response_id: response.id</code>
+    </p>
+  </div>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0001-first-responses-api-call.html">Lesson 1 — First Responses API Call</a> ·
+      Docs: <a href="https://platform.openai.com/docs/quickstart">OpenAI Quickstart</a>
+    </p>
+  </footer>
+</body>
+</html>
