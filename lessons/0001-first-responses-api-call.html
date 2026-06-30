@@ -69,15 +69,18 @@
     </div>
     <div class="step">
       <strong>Step 4</strong>
-      <span>Export it in your terminal (add to <code>~/.zshrc</code> to persist):</span>
+      <span>Save it in a local <code>.env</code> file at the project root (never commit this file):</span>
     </div>
   </div>
 
-  <pre class="example">export OPENAI_API_KEY="sk-..."</pre>
+  <pre class="example">cp .env.example .env
+# edit .env and paste your key:
+OPENAI_API_KEY=sk-...</pre>
 
   <p>
-    The official SDKs read <code>OPENAI_API_KEY</code> automatically.
-    Never commit this key to git or paste it into frontend code.
+    Practice scripts load <code>.env</code> via <code>dotenv</code>.
+    The official SDK reads <code>OPENAI_API_KEY</code> from the environment automatically.
+    Never commit your key to git or paste it into frontend code.
   </p>
 
   <h2>The call</h2>
@@ -182,8 +185,8 @@ console.log(response.output_text);</pre>
     <p><strong>10-minute win:</strong> run a real API call from your machine.</p>
     <ol>
       <li>In this repo, open a terminal at the project root</li>
-      <li>Install the SDK: <code>npm init -y && npm install openai</code></li>
-      <li>Confirm your key is set: <code>echo $OPENAI_API_KEY | head -c 8</code> (should print <code>sk-proj-</code> or similar)</li>
+      <li>Install dependencies: <code>npm init -y && npm install openai dotenv</code></li>
+      <li>Copy <code>.env.example</code> to <code>.env</code> and add your API key</li>
       <li>Run the practice script: <code>node practice/0001-hello.mjs</code></li>
       <li>Log the full response once: add <code>console.log(JSON.stringify(response, null, 2))</code> and find <code>output</code>, <code>usage</code>, and <code>id</code></li>
     </ol>

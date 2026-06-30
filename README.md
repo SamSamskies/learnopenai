@@ -22,4 +22,4 @@ A teaching workspace for mastering the OpenAI platform as an AI Product Engineer
 
 - [platform.openai.com](https://platform.openai.com) account with API billing (~$5 minimum)
 - Node.js 18+ for practice scripts
-- `OPENAI_API_KEY` exported in your shell
+- Copy `.env.example` to `.env` and set your `OPENAI_API_KEY`
