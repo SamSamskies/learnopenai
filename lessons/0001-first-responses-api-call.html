@@ -91,7 +91,8 @@ OPENAI_API_KEY=sk-...</pre>
     <a href="https://platform.openai.com/docs/api-reference/responses/create">Docs</a>.
   </p>
 
-  <pre class="example">import OpenAI from "openai";
+  <pre class="example">import "dotenv/config";
+import OpenAI from "openai";
 
 const client = new OpenAI();
 
@@ -100,7 +101,9 @@ const response = await client.responses.create({
   input: "Say hello in exactly five words.",
 });
 
-console.log(response.output_text);</pre>
+console.log("output_text:", response.output_text);
+console.log("response id:", response.id);
+console.log("tokens:", response.usage?.total_tokens);</pre>
 
   <p>
     <code>gpt-4.1-nano</code> is cheap for learning (~$0.10 per million input tokens).
