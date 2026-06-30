@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instructions &amp; Prompts — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    .flow {
+      margin-top: 2rem;
+      padding: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    .flow h2 {
+      font-size: 0.75rem;
+      font-family: system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      border: none;
+      padding: 0;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Instructions &amp; Prompts</h1>
+  <p class="subtitle">System-level guidance in the Responses API.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Mechanism</th>
+        <th>What it is</th>
+        <th>Persists via <code>previous_response_id</code>?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>instructions</code></td>
+        <td>Top-level system prompt for this request</td>
+        <td>No — resend every turn</td>
+      </tr>
+      <tr>
+        <td><code>developer</code> role in <code>input</code></td>
+        <td>System message inside the transcript</td>
+        <td>Yes — part of stored history</td>
+      </tr>
+      <tr>
+        <td><code>user</code> role in <code>input</code></td>
+        <td>End-user message</td>
+        <td>Yes</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const instructions = `
+You are a support bot for Acme Corp.
+Answer in one short paragraph. Never invent pricing.
+`.trim();
+
+const response = await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions,
+  input: userMessage,
+  previous_response_id: lastResponseId,
+  store: true,
+});</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Rule</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Priority</td>
+        <td><code>instructions</code> overrides conflicting content in <code>input</code></td>
+      </tr>
+      <tr>
+        <td>Chaining</td>
+        <td><code>previous_response_id</code> replays user/assistant turns — not prior <code>instructions</code></td>
+      </tr>
+      <tr>
+        <td>Chat Completions</td>
+        <td><code>{ role: "system" }</code> → top-level <code>instructions</code> (or <code>developer</code> in <code>input</code>)</td>
+      </tr>
+      <tr>
+        <td>Product pattern</td>
+        <td>Keep prompts in a versioned module; build <code>instructions</code> per feature; resend on every request</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="flow">
+    <h2>When to use which</h2>
+    <p>
+      <strong><code>instructions</code></strong> → stable per-feature rules you may change without polluting history (support bot tone, output format)<br>
+      <strong><code>developer</code> in turn 1 <code>input</code></strong> → rules that should live in the stored transcript (rare; harder to update mid-thread)<br>
+      <strong>Resend <code>instructions</code></strong> → every turn when using <code>previous_response_id</code>
+    </p>
+  </div>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0004-set-system-instructions.html">Lesson 4 — Set System Instructions</a> ·
+      <a href="conversation-state.html">Conversation State</a> ·
+      Docs: <a href="https://platform.openai.com/docs/guides/prompt-engineering">Prompt engineering guide</a>
+    </p>
+  </footer>
+</body>
+</html>

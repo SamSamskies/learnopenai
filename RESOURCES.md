@@ -18,6 +18,8 @@
   Connect external MCP servers to the Responses API. Use for: MCP integration topic.
 - [Conversation state](https://platform.openai.com/docs/guides/conversation-state)
   `previous_response_id`, server-side state. Use for: multi-turn product flows.
+- [Prompt engineering](https://platform.openai.com/docs/guides/prompt-engineering)
+  `instructions`, message roles, prompt versioning. Use for: system prompts and product behavior.
 - [Prompt caching](https://platform.openai.com/docs/guides/prompt-caching)
   Cost/latency optimization for repeated prefixes. Use for: production economics.
 - [Background mode](https://platform.openai.com/docs/guides/background)

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4 — Set System Instructions</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 4 · ~15 minutes</div>
+  <h1>Set System Instructions</h1>
+
+  <p class="epigraph">
+    Users type the question.
+    You write the rules the model must follow.
+  </p>
+
+  <p>
+    In <a href="0003-chain-a-conversation.html">Lesson 3</a> you chained turns with
+    <code>previous_response_id</code>. The model remembered what the user said — but
+    who sets the <em>product's</em> behavior? Tone, format, guardrails, domain knowledge.
+    That's <strong>system instructions</strong>.
+  </p>
+
+  <p>
+    In Chat Completions you tucked this in a <code>system</code> message.
+    In Responses it's a top-level <code>instructions</code> parameter — separate from
+  <code>input</code>, separate from the user's words.
+    <a href="https://platform.openai.com/docs/guides/prompt-engineering">Docs</a>.
+  </p>
+
+  <h2>instructions vs input</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Parameter</th>
+        <th>Who "writes" it</th>
+        <th>Typical content</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>instructions</code></td>
+        <td>Your product (developer)</td>
+        <td>Role, tone, format rules, business constraints</td>
+      </tr>
+      <tr>
+        <td><code>input</code></td>
+        <td>End user</td>
+        <td>The actual question or task for this turn</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const response = await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions: "You are a terse assistant. Never use more than five words.",
+  input: "What color is the sky?",
+});</pre>
+
+  <p>
+    <code>instructions</code> takes priority over conflicting content in
+    <code>input</code>. If the user asks for a paragraph but your instructions
+    say "five words max," the instructions win.
+  </p>
+
+  <h2>The chaining gotcha (you already hit this)</h2>
+
+  <p>
+    <code>previous_response_id</code> replays stored user/assistant turns — it does
+    <strong>not</strong> replay <code>instructions</code> from earlier requests.
+    You must resend stable instructions on <em>every</em> turn.
+  </p>
+
+  <pre class="example">// Turn 2 — BOTH are required for a chained chat product
+const second = await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions: sameInstructionsAsTurn1,  // &lt;— resend every time
+  input: "What about at sunset?",
+  previous_response_id: first.id,
+  store: true,
+});</pre>
+
+  <div class="callout warn">
+    <strong>Common bug</strong><br>
+    Chain works, memory works, but the bot "forgets" its personality on turn 2.
+    Cause: <code>instructions</code> sent only on turn 1. Fix: include them on every call.
+  </div>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    Store <code>instructions</code> in a prompt module (or DB config per feature) —
+    not in React state per message. On each send:
+    <code>{ instructions, input: userMessage, previous_response_id }</code>.
+    "New chat" clears the response id; instructions stay the same.
+  </div>
+
+  <h2>instructions vs developer role</h2>
+
+  <p>
+    You can also put system guidance in <code>input</code> as a
+    <code>developer</code> role message. That <em>does</em> persist in the stored
+    transcript when chaining. Most products still prefer top-level
+    <code>instructions</code> because you can change behavior per request without
+    rewriting history.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Approach</th>
+        <th>Persists when chaining?</th>
+        <th>Best for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>instructions</code></td>
+        <td>No — resend each turn</td>
+        <td>Default: versioned product prompts</td>
+      </tr>
+      <tr>
+        <td><code>developer</code> in <code>input</code></td>
+        <td>Yes — part of transcript</td>
+        <td>Rules baked into thread history (uncommon)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    See the <a href="../reference/instructions-and-prompts.html">instructions reference</a>
+    and <a href="../reference/conversation-state.html">conversation state reference</a>
+    together — chaining and instructions are a pair.
+  </p>
+
+  <h2>Version prompts like code</h2>
+
+  <p>
+    Treat prompts as application logic, not copy-pasted strings. OpenAI recommends
+    keeping prompt builders in a small module, pinning model snapshots in production,
+    and testing prompt changes before rollout.
+  </p>
+
+  <pre class="example">// prompts/support-bot.mjs
+export function buildSupportInstructions({ companyName }) {
+  return `
+You are a support assistant for ${companyName}.
+Answer in one short paragraph. Never invent pricing.
+If unsure, say you will escalate.
+  `.trim();
+}</pre>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. instructions apply per request only — resend on every turn when chaining.","false":"previous_response_id replays transcript items, not prior instructions."}'>
+    <h3>1. How to keep system rules each turn?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Resend instructions every request</button>
+      <button data-correct="false">Chain them with response id</button>
+      <button data-correct="false">Put them inside input only</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. instructions override conflicting user content in input.","false":"User input does not outrank top-level instructions."}'>
+    <h3>2. When instructions and input conflict?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Instructions override user input</button>
+      <button data-correct="false">User input overrides system</button>
+      <button data-correct="false">Model picks randomly each time</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Chat Completions system maps to instructions or developer role.","false":"store controls server persistence, not system prompts."}'>
+    <h3>3. Chat Completions system maps to?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Top level instructions field</button>
+      <button data-correct="false">The store true parameter</button>
+      <button data-correct="false">Assistant role in output</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> prove instructions shape behavior — and vanish when you forget to resend them.</p>
+    <ol>
+      <li>Run: <code>node practice/0004-instructions.mjs</code></li>
+      <li>Turns 1–2 should stay under six words (terse rule)</li>
+      <li>Turn 3 should ramble — you chained but omitted <code>instructions</code></li>
+      <li>Fix turn 3: add <code>instructions</code> back and rerun that call</li>
+      <li>Extract the terse prompt into a <code>const</code> or small module — that's the product pattern</li>
+    </ol>
+    <p>
+      When you can resend stable instructions across a chained thread, you have
+      the two primitives every chat backend needs: state + behavior.
+      Lesson 5 will constrain output with <strong>structured JSON</strong> so your
+      UI can parse responses reliably.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/prompt-engineering">Prompt engineering guide</a>
+    (message roles and <code>instructions</code> section).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0003-chain-a-conversation.html">Lesson 3 — Chain a Conversation</a> ·
+      Reference: <a href="../reference/instructions-and-prompts.html">Instructions &amp; Prompts</a> ·
+      Next: Lesson 5 — Structured outputs (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
