@@ -122,8 +122,11 @@ for await (const event of stream) {
 
   <p>
     Save the <code>resp_…</code> id here if you need multi-turn state later.
-    Your accumulated <code>text</code> string should match
-    <code>event.response.output_text</code>.
+    Your accumulated <code>text</code> string should match the final text in
+    <code>event.response.output</code> (or <code>event.text</code> on
+    <code>response.output_text.done</code>). The <code>output_text</code>
+    shortcut from Lesson 1 is added by the SDK on blocking calls only — not on
+    streamed <code>response.completed</code> events.
   </p>
 
   <h2>What you'll ignore (for now)</h2>
