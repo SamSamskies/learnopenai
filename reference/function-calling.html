@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Function Calling — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    .flow {
+      margin-top: 2rem;
+      padding: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    .flow h2 {
+      font-size: 0.75rem;
+      font-family: system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      border: none;
+      padding: 0;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Function Calling</h1>
+  <p class="subtitle">Custom tools your code executes — Responses API.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Term</th>
+        <th>What it is</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>tools[]</code></td>
+        <td>Functions you declare on each request (name, description, JSON Schema <code>parameters</code>).</td>
+      </tr>
+      <tr>
+        <td><code>function_call</code></td>
+        <td>Output item when the model wants your code to run. Has <code>name</code>, <code>arguments</code> (JSON string), <code>call_id</code>.</td>
+      </tr>
+      <tr>
+        <td><code>function_call_output</code></td>
+        <td>Input item you send back with the tool result. Must match <code>call_id</code>.</td>
+      </tr>
+      <tr>
+        <td><code>tool_choice</code></td>
+        <td><code>"auto"</code> (default), <code>"required"</code>, <code>"none"</code>, or force one function by name.</td>
+      </tr>
+      <tr>
+        <td><code>parallel_tool_calls</code></td>
+        <td><code>false</code> → at most one tool per turn. Recommended for nano models.</td>
+      </tr>
+      <tr>
+        <td><code>strict: true</code></td>
+        <td>Arguments must match schema (same rules as <a href="structured-outputs.html">structured outputs</a>).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="flow">
+    <h2>Two-turn loop</h2>
+    <pre class="example" style="margin: 0; border: none; padding: 0; background: transparent;">// 1. Ask with tools
+const r1 = await client.responses.create({ input, tools });
+
+// 2. Find function_call in r1.output
+const call = r1.output.find(i => i.type === "function_call");
+const result = myHandler(JSON.parse(call.arguments));
+
+// 3. Return output, chain thread
+const r2 = await client.responses.create({
+  previous_response_id: r1.id,
+  input: [{ type: "function_call_output", call_id: call.call_id, output: result }],
+});
+
+// 4. User-facing text
+r2.output_text</pre>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Tool type</th>
+        <th>Who runs it</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Custom function (<code>type: "function"</code>)</td>
+        <td>Your application code</td>
+      </tr>
+      <tr>
+        <td>Built-in (web search, code interpreter, file search)</td>
+        <td>OpenAI platform</td>
+      </tr>
+      <tr>
+        <td>Remote MCP</td>
+        <td>External MCP server</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top: 1.5rem; font-size: 0.95rem;">
+    Lesson: <a href="../lessons/0007-custom-function-tools.html">Custom Function Tools</a> ·
+    Docs: <a href="https://platform.openai.com/docs/guides/function-calling">Function calling guide</a>
+  </p>
+
+  <footer>
+    <p style="font-size: 0.85rem; color: var(--muted);">
+      Related: <a href="structured-outputs.html">Structured Outputs</a> ·
+      <a href="conversation-state.html">Conversation State</a> ·
+      <a href="responses-api-basics.html">Responses API Basics</a>
+    </p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 7 — Custom Function Tools</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 7 · ~15 minutes</div>
+  <h1>Custom Function Tools</h1>
+
+  <p class="epigraph">
+    The model decides what to do.
+    Your code does it.
+  </p>
+
+  <p>
+    <a href="0005-structured-json-output.html">Lesson 5</a> constrained what the
+    model <em>returns</em>. Now the model can <em>request</em> actions — look up
+    a user, check inventory, file a ticket — and your backend runs them.
+    This is <strong>function calling</strong> (tool calling).
+    <a href="https://platform.openai.com/docs/guides/function-calling">Docs</a>.
+  </p>
+
+  <h2>Three pieces of vocabulary</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Term</th>
+        <th>Who owns it</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Tool</strong> — the function definition you declare</td>
+        <td>Your API request (<code>tools</code> array)</td>
+      </tr>
+      <tr>
+        <td><strong>Tool call</strong> — model asks to run one</td>
+        <td>Model response (<code>function_call</code> in <code>output</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Tool output</strong> — result your code produced</td>
+        <td>Your next request (<code>function_call_output</code>)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The model never touches your database. It only emits a structured request;
+    you execute it and send the result back.
+  </p>
+
+  <h2>Define a function tool</h2>
+
+  <p>
+    Same JSON Schema rules as structured outputs:
+    <code>strict: true</code>, every property in <code>required</code>,
+    <code>additionalProperties: false</code>.
+    See <a href="../reference/structured-outputs.html">structured outputs reference</a>.
+  </p>
+
+  <pre class="example">tools: [{
+  type: "function",
+  name: "get_feature_status",
+  description: "Look up a product feature in the backlog by slug.",
+  strict: true,
+  parameters: {
+    type: "object",
+    properties: {
+      feature_slug: { type: "string", description: "e.g. dark-mode" },
+    },
+    required: ["feature_slug"],
+    additionalProperties: false,
+  },
+}]</pre>
+
+  <h2>The two-turn loop</h2>
+
+  <pre class="example">// Turn 1 — user asks; model may call your tool
+const first = await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions: "Use get_feature_status for real backlog data.",
+  input: "Is dark mode on our roadmap?",
+  tools,
+});
+
+const call = first.output.find(i => i.type === "function_call");
+// call.name → "get_feature_status"
+// call.arguments → '{"feature_slug":"dark-mode"}'
+// call.call_id → pair output to this call
+
+const result = getFeatureStatus(JSON.parse(call.arguments));
+
+// Turn 2 — send tool output back, chain the thread
+const second = await client.responses.create({
+  model: "gpt-4.1-nano",
+  previous_response_id: first.id,
+  input: [{
+    type: "function_call_output",
+    call_id: call.call_id,
+    output: result,  // string (often JSON)
+  }],
+});
+
+console.log(second.output_text);
+// "Dark mode is planned with high priority."</pre>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    Turn 1 response has no user-facing text yet — show "Looking up backlog…"<br>
+    Your server runs the handler, then calls the API again with the output.<br>
+    Turn 2 <code>output_text</code> is what you stream or render in the chat bubble.<br>
+    Chain with <code>previous_response_id</code> from
+    <a href="0003-chain-a-conversation.html">Lesson 3</a>.
+  </div>
+
+  <div class="callout warn">
+    <strong><code>call_id</code> must match</strong><br>
+    Every <code>function_call_output</code> references the
+    <code>call_id</code> from its <code>function_call</code>. Wrong id → the
+    model can't pair result to request (breaks with parallel calls too).
+  </div>
+
+  <h2>Custom vs built-in vs MCP</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Tool type</th>
+        <th>Runs where</th>
+        <th>Example</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Custom function</td>
+        <td>Your server</td>
+        <td><code>get_feature_status</code>, refund order</td>
+      </tr>
+      <tr>
+        <td>Built-in</td>
+        <td>OpenAI platform</td>
+        <td>Web search, code interpreter</td>
+      </tr>
+      <tr>
+        <td>Remote MCP</td>
+        <td>External MCP server</td>
+        <td>Connect Cursor-style tools to the API</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    This lesson is custom functions only — you own the handler.
+    Built-in tools and MCP come later.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. function_call lives in output — your code runs the handler.","false":"The model never executes your functions — only requests them."}'>
+    <h3>1. Who executes a custom tool?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Your application code runs it</button>
+      <button data-correct="false">OpenAI platform runs it</button>
+      <button data-correct="false">The model runs it inline</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. call_id pairs each output to its function_call.","false":"Use response.id or name — those do not pair calls."}'>
+    <h3>2. What links output to call?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">The call_id field must match</button>
+      <button data-correct="false">The function name is enough</button>
+      <button data-correct="false">The response id is enough</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. second create with previous_response_id chains the thread.","false":"Put tool output in instructions — that breaks the tool loop."}'>
+    <h3>3. How to send tool results back?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">function_call_output plus response id</button>
+      <button data-correct="false">Append output to instructions field</button>
+      <button data-correct="false">Redefine tools without any input</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> watch the model request a lookup, then answer from your mock data.</p>
+    <ol>
+      <li>Run: <code>node practice/0007-function-tools.mjs</code></li>
+      <li>Confirm turn 1 prints <code>get_feature_status</code> with <code>dark-mode</code> args</li>
+      <li>Confirm turn 2 answers about roadmap status and priority</li>
+      <li>Change the question to SSO — watch it call the tool with <code>sso</code></li>
+      <li>Add a fake slug <code>widgets</code> — see how the model handles <code>found: false</code></li>
+    </ol>
+    <p>
+      You now have the server loop behind "AI that can check our systems."
+      Lesson 8 will cover <strong>built-in tools</strong> (web search, etc.) —
+      same loop, but OpenAI runs the handler.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/function-calling">Function calling guide</a>
+    (tool calling flow and <code>function_call_output</code>).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0006-stream-structured-output.html">Lesson 6 — Stream Structured Output</a> ·
+      Reference: <a href="../reference/function-calling.html">Function Calling</a> ·
+      Next: Lesson 8 — Built-in tools (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
