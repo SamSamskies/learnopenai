@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Built-in Tools — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Built-in Tools</h1>
+  <p class="subtitle">Platform-managed tools — OpenAI runs the handler.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Tool <code>type</code></th>
+        <th>What it does</th>
+        <th>Setup</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>web_search</code></td>
+        <td>Live web lookup + citations</td>
+        <td>Add to <code>tools</code>; model + per-search cost</td>
+      </tr>
+      <tr>
+        <td><code>file_search</code></td>
+        <td>RAG over your uploaded files</td>
+        <td>Vector store + <code>vector_store_ids</code></td>
+      </tr>
+      <tr>
+        <td><code>code_interpreter</code></td>
+        <td>Run Python in a sandbox</td>
+        <td>Add to <code>tools</code>; container billing</td>
+      </tr>
+      <tr>
+        <td><code>mcp</code></td>
+        <td>Remote MCP server tools</td>
+        <td><code>server_url</code>, approval policy</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table>
+    <thead>
+      <tr>
+        <th>vs custom function</th>
+        <th>Custom (<code>type: "function"</code>)</th>
+        <th>Built-in</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Who executes</td>
+        <td>Your server</td>
+        <td>OpenAI platform</td>
+      </tr>
+      <tr>
+        <td>Typical turns</td>
+        <td>Two — call then <code>function_call_output</code></td>
+        <td>One — result in same response</td>
+      </tr>
+      <tr>
+        <td>Output item</td>
+        <td><code>function_call</code></td>
+        <td><code>web_search_call</code>, etc.</td>
+      </tr>
+      <tr>
+        <td>When to use</td>
+        <td>Your DB, auth, business logic</td>
+        <td>Generic capability (search, files, code)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">// Web search — single request
+const response = await client.responses.create({
+  model: "gpt-5.5",
+  input: "What changed in the latest OpenAI changelog?",
+  tools: [{ type: "web_search", search_context_size: "low" }],
+});
+
+response.output_text;  // answer with inline citations
+// response.output includes web_search_call + message</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Web search output</th>
+        <th>Where</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>web_search_call</code></td>
+        <td><code>output[]</code> — search action, queries, status</td>
+      </tr>
+      <tr>
+        <td><code>message</code></td>
+        <td><code>output[]</code> — <code>output_text</code> + <code>annotations</code></td>
+      </tr>
+      <tr>
+        <td><code>url_citation</code></td>
+        <td>Per-URL metadata — must be visible in product UI</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top: 1.5rem; font-size: 0.95rem;">
+    Lesson: <a href="../lessons/0008-built-in-tools.html">Built-in Tools</a> ·
+    Docs: <a href="https://platform.openai.com/docs/guides/tools">Using tools</a> ·
+    <a href="https://platform.openai.com/docs/guides/tools-web-search">Web search</a>
+  </p>
+
+  <footer>
+    <p style="font-size: 0.85rem; color: var(--muted);">
+      Related: <a href="function-calling.html">Function Calling</a> ·
+      <a href="responses-api-basics.html">Responses API Basics</a>
+    </p>
+  </footer>
+</body>
+</html>

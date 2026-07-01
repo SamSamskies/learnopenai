@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 8 — Built-in Tools</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 8 · ~12 minutes</div>
+  <h1>Built-in Tools</h1>
+
+  <p class="epigraph">
+    Same <code>tools</code> array.
+    Different owner of the handler.
+  </p>
+
+  <p>
+    In <a href="0007-custom-function-tools.html">Lesson 7</a> you declared
+    functions and ran them yourself — a two-turn loop with
+    <code>function_call_output</code>. <strong>Built-in tools</strong> use the
+    same request shape, but OpenAI's platform executes them. You get the answer
+    in one response — no handler code, no second API call.
+    <a href="https://platform.openai.com/docs/guides/tools">Docs</a>.
+  </p>
+
+  <h2>Custom vs built-in</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Custom function</th>
+        <th>Built-in tool</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Runs on</strong></td>
+        <td>Your server</td>
+        <td>OpenAI platform</td>
+      </tr>
+      <tr>
+        <td><strong>Your code</strong></td>
+        <td>Handler + second <code>create</code></td>
+        <td>Declare tool in <code>tools</code> only</td>
+      </tr>
+      <tr>
+        <td><strong>Output item</strong></td>
+        <td><code>function_call</code></td>
+        <td><code>web_search_call</code>, etc.</td>
+      </tr>
+      <tr>
+        <td><strong>Best for</strong></td>
+        <td>Your DB, auth, business rules</td>
+        <td>Web, files, code sandbox</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Product rule of thumb: if the capability is generic and OpenAI already
+    ships it, use built-in. If it touches <em>your</em> systems, use a custom
+    function. See <a href="../reference/built-in-tools.html">built-in tools reference</a>.
+  </p>
+
+  <h2>Web search — one request</h2>
+
+  <p>
+    The most common built-in for product features that need current information.
+    Add <code>{ type: "web_search" }</code> to <code>tools</code>. The model
+    decides whether to search based on the prompt.
+  </p>
+
+  <pre class="example">const response = await client.responses.create({
+  model: "gpt-5.5",
+  instructions: "Answer concisely. Cite sources when you search.",
+  input: "What is the current stable version of the OpenAI Node SDK?",
+  tools: [{ type: "web_search", search_context_size: "low" }],
+});
+
+console.log(response.output_text);
+// "The current stable version is …" with inline citations</pre>
+
+  <div class="callout warn">
+    <strong>Model and cost</strong><br>
+    Web search requires a model that supports it (e.g. <code>gpt-5.5</code>) —
+    not <code>gpt-4.1-nano</code> from earlier lessons. Each search action has
+  per-tool pricing on top of tokens. Use <code>search_context_size: "low"</code>
+    for quick lookups; see
+    <a href="https://platform.openai.com/docs/pricing">pricing</a>.
+  </div>
+
+  <h2>What's in the response</h2>
+
+  <p>
+    Unlike custom functions, you don't send results back. Inspect
+    <code>response.output</code> for two item types:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Contains</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>web_search_call</code></td>
+        <td>Search status, action type (<code>search</code>), queries used</td>
+      </tr>
+      <tr>
+        <td><code>message</code></td>
+        <td><code>output_text</code> plus <code>url_citation</code> annotations</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const search = response.output.find(i => i.type === "web_search_call");
+const msg = response.output.find(i => i.type === "message");
+
+search?.action;           // { type: "search", query: "…" }
+response.output_text;     // user-facing answer
+msg?.content[0].annotations;  // [{ type: "url_citation", url, title, … }]</pre>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    Show a "Searching…" state while the request is in flight (built-ins can take
+    longer than a plain completion).<br>
+    Render <code>url_citation</code> links visibly — OpenAI requires inline
+    citations to be clear and clickable when you display web results to users.
+  </div>
+
+  <h2>Other built-ins (survey)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th><code>type</code></th>
+        <th>Use when</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>file_search</code></td>
+        <td>User docs in a vector store — RAG without building retrieval yourself</td>
+      </tr>
+      <tr>
+        <td><code>code_interpreter</code></td>
+        <td>Model needs to run Python (charts, data transforms) in a sandbox</td>
+      </tr>
+      <tr>
+        <td><code>mcp</code></td>
+        <td>Connect external MCP servers — covered in a later lesson</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+  <code>file_search</code> needs a vector store id; we'll practice that when you
+    ship a doc-Q&amp;A feature. For now, web search is enough to internalize the
+    built-in pattern.
+  </p>
+
+  <h2>Mixing custom and built-in</h2>
+
+  <p>
+    You can put both in the same <code>tools</code> array — e.g. web search for
+    public docs plus <code>get_feature_status</code> for your backlog. The model
+    picks which to call. Custom calls still need your two-turn loop; built-ins
+    complete inside the same response (or chain via
+    <code>previous_response_id</code> if you continue the thread).
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. OpenAI runs search on their platform.","false":"Your server runs built-ins — only custom functions do."}'>
+    <h3>1. Who runs web_search?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">OpenAI platform runs it</button>
+      <button data-correct="false">Your server runs it</button>
+      <button data-correct="false">The browser runs it</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Built-ins finish in one response.","false":"Built-ins need function_call_output like custom tools."}'>
+    <h3>2. Second turn for web search?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">No second turn needed</button>
+      <button data-correct="false">Yes send function_call_output</button>
+      <button data-correct="false">Yes append to instructions</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Custom for your systems; built-in for generic platform capabilities.","false":"Always custom — built-ins are deprecated on the platform."}'>
+    <h3>3. Look up your order DB?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Custom function on your server</button>
+      <button data-correct="false">Built-in web_search tool</button>
+      <button data-correct="false">Neither — model memory only</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> one API call, live web data, citations in the output.</p>
+    <ol>
+      <li>Run: <code>node practice/0008-web-search.mjs</code></li>
+      <li>Confirm <code>web_search_call</code> appears in the logged output</li>
+      <li>Read <code>output_text</code> — note inline citation markers</li>
+      <li>Inspect <code>annotations</code> — URLs your UI should link</li>
+      <li>Change the question to something time-sensitive (e.g. today's weather in your city)</li>
+      <li>Compare mentally with Lesson 7: no handler, no <code>call_id</code>, no turn 2</li>
+    </ol>
+    <p>
+      You can now choose build vs buy for tool features. Lesson 9 will cover
+      <strong>streaming tool calls</strong> — showing progress while custom and
+      built-in tools run inside a live UI.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/tools-web-search">Web search guide</a>
+    (tool config, output shape, citation requirements).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0007-custom-function-tools.html">Lesson 7 — Custom Function Tools</a> ·
+      Reference: <a href="../reference/built-in-tools.html">Built-in Tools</a> ·
+      Next: Lesson 9 — Streaming tool calls (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
