@@ -45,7 +45,6 @@ const args =
 - Do **not** pair `create()` with `zodResponsesFunction` (no auto-parse).
 
 Reference (wire primitive): `practice/0007-function-tools.mjs`  
-Zod default: `practice/0007-function-tools-zod.mjs`, `practice/0008-firecrawl-search.mjs`
 
 ## When raw JSON Schema is OK
 

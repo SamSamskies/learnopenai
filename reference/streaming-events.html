@@ -68,6 +68,18 @@
         <td>Text chunk in <code>event.delta</code>. <strong>Append</strong> to your UI string.</td>
       </tr>
       <tr>
+        <td><code>response.output_item.added</code></td>
+        <td>Output item started — for tools: <code>item.name</code>, <code>item.call_id</code> when <code>item.type === "function_call"</code>.</td>
+      </tr>
+      <tr>
+        <td><code>response.function_call_arguments.delta</code></td>
+        <td>Partial tool-args JSON in <code>event.delta</code>. Append; don't parse until done.</td>
+      </tr>
+      <tr>
+        <td><code>response.function_call_arguments.done</code></td>
+        <td>Final args in <code>event.arguments</code>. Safe to <code>JSON.parse</code> and run handler.</td>
+      </tr>
+      <tr>
         <td><code>response.output_text.done</code></td>
         <td>One text part finalized. Full text in <code>event.text</code>.</td>
       </tr>
@@ -117,6 +129,7 @@ for await (const event of stream) {
     <p>
       Lesson: <a href="../lessons/0002-stream-a-response.html">Lesson 2</a> ·
       <a href="../lessons/0006-stream-structured-output.html">Lesson 6</a> ·
+      <a href="../lessons/0009-streaming-tool-calls.html">Lesson 9</a> ·
       Docs: <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses guide</a>
     </p>
   </footer>
