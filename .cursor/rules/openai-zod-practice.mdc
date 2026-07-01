@@ -23,9 +23,6 @@ const response = await client.responses.parse({
 });
 ```
 
-Reference (wire primitive): `practice/0005-structured.mjs`  
-Zod default: `practice/0005-structured-zod.mjs`
-
 ## Function tool parameters
 
 Use `zodResponsesFunction` + `responses.parse()` for turn 1.
@@ -43,8 +40,6 @@ const args =
 
 - Turn 2 still uses `responses.create()` + `function_call_output`.
 - Do **not** pair `create()` with `zodResponsesFunction` (no auto-parse).
-
-Reference (wire primitive): `practice/0007-function-tools.mjs`  
 
 ## When raw JSON Schema is OK
 
