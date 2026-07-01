@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Structured Outputs — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    .flow {
+      margin-top: 2rem;
+      padding: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    .flow h2 {
+      font-size: 0.75rem;
+      font-family: system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      border: none;
+      padding: 0;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Structured Outputs</h1>
+  <p class="subtitle">JSON Schema–constrained model text in the Responses API.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Parameter</th>
+        <th>What it does</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>text.format.type: "json_schema"</code></td>
+        <td>Model output must match your schema (Structured Outputs)</td>
+      </tr>
+      <tr>
+        <td><code>text.format.strict: true</code></td>
+        <td>Enforce exact schema adherence (use in production)</td>
+      </tr>
+      <tr>
+        <td><code>text.format.name</code></td>
+        <td>Identifier for the schema (required, max 64 chars)</td>
+      </tr>
+      <tr>
+        <td><code>text.format.schema</code></td>
+        <td>JSON Schema object describing allowed output shape</td>
+      </tr>
+      <tr>
+        <td><code>output_text</code></td>
+        <td>Still a string — <code>JSON.parse()</code> to get an object</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">text: {
+  format: {
+    type: "json_schema",
+    name: "feature_idea",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        priority: { type: "string", enum: ["low", "medium", "high"] },
+      },
+      required: ["title", "priority"],
+      additionalProperties: false,
+    },
+  },
+}</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Mode</th>
+        <th>When to use</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>json_schema</code> (Structured Outputs)</td>
+        <td>Default for gpt-4o+ and gpt-4.1 — reliable typed fields for UIs</td>
+      </tr>
+      <tr>
+        <td><code>json_object</code> (JSON mode)</td>
+        <td>Legacy — valid JSON only, no schema guarantee</td>
+      </tr>
+      <tr>
+        <td><code>text</code> (default)</td>
+        <td>Free-form prose — chat, copy, explanations</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="flow">
+    <h2>Schema rules (strict mode)</h2>
+    <p>
+      Set <code>additionalProperties: false</code> on objects.<br>
+      List every field in <code>required</code>.<br>
+      Use supported types: string, number, integer, boolean, enum, array, object.<br>
+      Root must be <code>type: "object"</code> (not an array at the top level).
+    </p>
+  </div>
+
+  <div class="flow">
+    <h2>Frontend mapping</h2>
+    <p>
+      <code>const data = JSON.parse(response.output_text)</code> → set React state / Zod validate → render UI.<br>
+      Pair with <code>instructions</code> for behavior; schema enforces shape.<br>
+      Optional SDK path: <code>client.responses.parse()</code> + <code>zodTextFormat</code> for auto-parsed <code>output_parsed</code> — see <code>practice/0005-structured-zod.mjs</code>.
+    </p>
+  </div>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0005-structured-json-output.html">Lesson 5 — Structured JSON Output</a> ·
+      <a href="instructions-and-prompts.html">Instructions &amp; Prompts</a> ·
+      Docs: <a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs guide</a>
+    </p>
+  </footer>
+</body>
+</html>

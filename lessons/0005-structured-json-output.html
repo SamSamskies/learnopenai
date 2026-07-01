@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 5 — Structured JSON Output</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 5 · ~15 minutes</div>
+  <h1>Structured JSON Output</h1>
+
+  <p class="epigraph">
+    Free text is for humans.
+    JSON Schema is for your product.
+  </p>
+
+  <p>
+    In <a href="0004-set-system-instructions.html">Lesson 4</a> you set
+    <em>behavior</em> with <code>instructions</code>. Now constrain
+    <em>shape</em>: tell the model exactly what fields to return so your UI
+    can parse the response without regex or hope.
+  </p>
+
+  <p>
+    This is <strong>Structured Outputs</strong> — the Responses API parameter
+    is <code>text.format</code> with <code>type: "json_schema"</code>.
+    <a href="https://platform.openai.com/docs/guides/structured-outputs">Docs</a>.
+  </p>
+
+  <h2>Why products need this</h2>
+
+  <p>
+    Imagine a feedback inbox. The model reads messy user text and your UI
+    needs <code>title</code>, <code>user_problem</code>, and
+    <code>priority</code> to render a card. Without a schema, the model might
+    return prose, bullet lists, or JSON with the wrong keys — every render path
+    breaks differently.
+  </p>
+
+  <p>
+    With Structured Outputs, the API guarantees output matches your schema
+    (when <code>strict: true</code>). You <code>JSON.parse(output_text)</code>
+    once and map fields to React state.
+  </p>
+
+  <h2>The API shape</h2>
+
+  <pre class="example">const response = await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions: "Extract a feature idea from user feedback.",
+  input: messyUserMessage,
+  text: {
+    format: {
+      type: "json_schema",
+      name: "feature_idea",
+      strict: true,
+      schema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          user_problem: { type: "string" },
+          priority: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+          },
+        },
+        required: ["title", "user_problem", "priority"],
+        additionalProperties: false,
+      },
+    },
+  },
+});
+
+const data = JSON.parse(response.output_text);
+// data.title, data.priority — ready for your UI</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Piece</th>
+        <th>Role</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>instructions</code></td>
+        <td>How to think (tone, domain rules)</td>
+      </tr>
+      <tr>
+        <td><code>input</code></td>
+        <td>What to extract from (user content)</td>
+      </tr>
+      <tr>
+        <td><code>text.format.schema</code></td>
+        <td>What shape to return (fields and types)</td>
+      </tr>
+      <tr>
+        <td><code>output_text</code></td>
+        <td>JSON string — parse it client-side</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>instructions + schema work together</strong><br>
+    Instructions say <em>what</em> to extract and how to phrase it.
+    Schema says <em>which fields</em> must exist. Don't put field lists only
+    in instructions — the schema is the contract your code depends on.
+  </div>
+
+  <h2>strict: true in production</h2>
+
+  <p>
+    Always set <code>strict: true</code> when shipping. The model must follow
+    your schema exactly. In strict mode:
+  </p>
+
+  <ul>
+    <li>Root schema must be <code>type: "object"</code></li>
+    <li>Every property needs a <code>type</code></li>
+    <li>All fields go in <code>required</code></li>
+    <li>Objects need <code>additionalProperties: false</code></li>
+  </ul>
+
+  <div class="callout warn">
+    <strong>Not the same as JSON mode</strong><br>
+    Older <code>type: "json_object"</code> only promises valid JSON — any
+    keys, any shape. <code>json_schema</code> promises <em>your</em> shape.
+    Use <code>json_schema</code> for product UIs.
+  </div>
+
+  <h2>Chaining note</h2>
+
+  <p>
+    Like <code>instructions</code>, <code>text.format</code> applies per
+    request. If turn 1 is free text and turn 2 needs structured JSON, set
+    <code>text.format</code> on turn 2 (and resend <code>instructions</code>).
+    See the
+    <a href="../reference/structured-outputs.html">structured outputs reference</a>.
+  </p>
+
+  <h2>Optional: SDK auto-parse</h2>
+
+  <p>
+    If you add Zod, the SDK can parse for you:
+    <code>client.responses.parse()</code> with
+    <code>zodTextFormat</code> returns <code>output_parsed</code> directly.
+    The raw <code>text.format</code> + <code>JSON.parse</code> path you learn
+    here is the platform primitive underneath.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. json_schema enforces your field shape, not just valid JSON.","false":"json_object only guarantees JSON syntax, not your schema."}'>
+    <h3>1. What enforces your field shape?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">json_schema with strict true</button>
+      <button data-correct="false">json_object mode alone</button>
+      <button data-correct="false">instructions text alone</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. output_text is still a string — parse it yourself.","false":"The API returns a nested object in output, not pre-parsed."}'>
+    <h3>2. How do you get a JS object?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">JSON parse on output text</button>
+      <button data-correct="false">Read response.output directly</button>
+      <button data-correct="false">Call JSON.stringify first</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. additionalProperties false is required in strict mode.","false":"Strict mode requires locking down extra keys."}'>
+    <h3>3. Strict mode object schemas need?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">additionalProperties set false</button>
+      <button data-correct="false">additionalProperties set true</button>
+      <button data-correct="false">No required array needed</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> extract structured fields from messy feedback — and see why prose fails.</p>
+    <ol>
+      <li>Run: <code>node practice/0005-structured.mjs</code></li>
+      <li>Confirm structured output parses to <code>title</code>, <code>user_problem</code>, <code>priority</code></li>
+      <li>Compare the unstructured call at the bottom — same prompt, no schema</li>
+      <li>Break it: remove one field from <code>required</code> with <code>strict: true</code> and see the API error</li>
+      <li>Imagine mapping <code>parsed</code> into a React card component — that's the product pattern</li>
+      <li>Optional: <code>node practice/0005-structured-zod.mjs</code> — same extraction with Zod + <code>output_parsed</code></li>
+    </ol>
+    <p>
+      When you can reliably get typed fields from model text, you have the
+      parsing primitive every AI product UI needs. Lesson 6 will combine
+      <strong>streaming + structured output</strong> for live typed UI updates.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs guide</a>
+    (<code>text.format</code> and JSON Schema section).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0004-set-system-instructions.html">Lesson 4 — Set System Instructions</a> ·
+      Reference: <a href="../reference/structured-outputs.html">Structured Outputs</a> ·
+      Next: Lesson 6 — Stream structured output (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
