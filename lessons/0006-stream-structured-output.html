@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6 — Stream Structured Output</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 6 · ~15 minutes</div>
+  <h1>Stream Structured Output</h1>
+
+  <p class="epigraph">
+    Fast UI feedback.
+    Typed fields at the end.
+  </p>
+
+  <p>
+    <a href="0002-stream-a-response.html">Lesson 2</a> streamed prose.
+    <a href="0005-structured-json-output.html">Lesson 5</a> returned typed JSON.
+    Real AI products combine both: the user sees something arrive immediately,
+    then your UI renders a structured card when generation finishes.
+  </p>
+
+  <h2>What actually streams</h2>
+
+  <p>
+    With <code>text.format: json_schema</code> (or Zod), deltas are still
+    <strong>raw JSON text chunks</strong> — not individual fields. You get
+    <code>{"tit</code> then <code>le":"Dark</code> then <code> Mode"...</code>
+    the same <code>response.output_text.delta</code> event from Lesson 2.
+  </p>
+
+  <div class="callout warn">
+    <strong>Don't parse partial JSON</strong><br>
+    <code>JSON.parse</code> on incomplete deltas will throw. Accumulate the
+    string for a live preview if you want, but only validate and render typed
+    fields when the stream completes.
+  </div>
+
+  <h2>The combined pattern</h2>
+
+  <pre class="example">const stream = client.responses.stream({
+  model: "gpt-4.1-nano",
+  instructions: "Extract a feature idea from feedback.",
+  input: messyUserMessage,
+  text: { format: zodTextFormat(FeatureIdea, "feature_idea") },
+});
+
+let jsonBuffer = "";
+
+for await (const event of stream) {
+  if (event.type === "response.output_text.delta") {
+    jsonBuffer += event.delta;       // optional: show raw preview
+    process.stdout.write(event.delta);
+  }
+}
+
+const response = await stream.finalResponse();
+// response.output_parsed — Zod-validated, safe for React state
+renderCard(response.output_parsed);</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>UI state</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Stream opens</td>
+        <td>Skeleton / spinner on the card</td>
+      </tr>
+      <tr>
+        <td>Each delta</td>
+        <td>Optional monospace JSON preview (append deltas)</td>
+      </tr>
+      <tr>
+        <td><code>finalResponse()</code></td>
+        <td>Parse once → render <code>title</code>, <code>priority</code>, etc.</td>
+      </tr>
+      <tr>
+        <td><code>response.failed</code></td>
+        <td>Error state, retry button</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    During stream: <code>setPreview(prev => prev + event.delta)</code> or skip preview entirely.<br>
+    On complete: <code>setData(response.output_parsed)</code> — swap skeleton for the real card.<br>
+    Store <code>response.id</code> from <code>finalResponse()</code> if chaining.
+  </div>
+
+  <h2>SDK methods recap</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Goal</th>
+        <th>Method</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Blocking typed output</td>
+        <td><code>client.responses.parse()</code> → <code>output_parsed</code></td>
+      </tr>
+      <tr>
+        <td>Streaming typed output</td>
+        <td><code>client.responses.stream()</code> → deltas, then <code>finalResponse()</code></td>
+      </tr>
+      <tr>
+        <td>Wire primitive (any language)</td>
+        <td><code>create({ stream: true, text: { format: json_schema } })</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    See <a href="../reference/structured-outputs.html">structured outputs reference</a>
+    for <code>create</code> vs <code>parse</code> vs <code>stream</code>, and
+    <a href="../reference/streaming-events.html">streaming events reference</a>
+    for event types.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Structured output still streams JSON text deltas, not separate fields.","false":"Deltas are still JSON string chunks — not per-field events."}'>
+    <h3>1. What do structured deltas contain?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Raw JSON text string chunks</button>
+      <button data-correct="false">One complete field per delta</button>
+      <button data-correct="false">Parsed objects ready for state</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. finalResponse returns output_parsed after Zod validation.","false":"Parse mid-stream on partial JSON — that throws errors."}'>
+    <h3>2. When to read output_parsed?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">After stream finalResponse call</button>
+      <button data-correct="false">On every delta during stream</button>
+      <button data-correct="false">Before the stream even starts</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. stream plus zodTextFormat — same schema, live deltas.","false":"parse is blocking only — use stream for live output."}'>
+    <h3>3. How to stream with Zod schema?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Use responses stream method</button>
+      <button data-correct="false">Use responses parse method</button>
+      <button data-correct="false">Drop the text format field</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> watch JSON arrive live, then render typed fields at the end.</p>
+    <ol>
+      <li>Run: <code>node practice/0006-stream-structured.mjs</code></li>
+      <li>Watch JSON stream character by character in the terminal</li>
+      <li>Confirm <code>output_parsed</code> has <code>title</code>, <code>user_problem</code>, <code>priority</code></li>
+      <li>Comment out the delta loop — notice you still get <code>output_parsed</code> at the end</li>
+      <li>Imagine: skeleton card during stream → swap to real card on <code>finalResponse()</code></li>
+    </ol>
+    <p>
+      You now have the server loop behind "AI fills in a form live." Lesson 7
+      will add <strong>custom function tools</strong> so the model can call your code.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses guide</a>
+    and
+    <a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs guide</a>
+    (streaming section).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0005-structured-json-output.html">Lesson 5 — Structured JSON Output</a> ·
+      Reference: <a href="../reference/structured-outputs.html">Structured Outputs</a> ·
+      Next: Lesson 7 — Custom function tools (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -133,6 +133,38 @@
   </div>
 
   <div class="flow">
+    <h2>properties vs required</h2>
+    <p>
+      <code>properties</code> = allowed fields and their types (optional by default).<br>
+      <code>required</code> = which fields must always appear.<br>
+      Strict mode forces all <code>properties</code> into <code>required</code> — redundant-looking, but JSON Schema semantics.
+    </p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>SDK approach</th>
+        <th>When to use</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>create</code> + hand-written <code>json_schema</code></td>
+        <td>Wire primitive; any language; full schema control</td>
+      </tr>
+      <tr>
+        <td><code>parse</code> + <code>zodTextFormat</code></td>
+        <td>TypeScript default — <code>output_parsed</code>, one schema for shape + validation</td>
+      </tr>
+      <tr>
+        <td><code>stream</code> + <code>finalResponse()</code></td>
+        <td>Live deltas + Zod parse at end — see Lesson 6</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="flow">
     <h2>Frontend mapping</h2>
     <p>
       <code>const data = JSON.parse(response.output_text)</code> → set React state / Zod validate → render UI.<br>
@@ -143,7 +175,8 @@
 
   <footer>
     <p>
-      Lesson: <a href="../lessons/0005-structured-json-output.html">Lesson 5 — Structured JSON Output</a> ·
+      Lesson: <a href="../lessons/0005-structured-json-output.html">Lesson 5</a> ·
+      <a href="../lessons/0006-stream-structured-output.html">Lesson 6</a> ·
       <a href="instructions-and-prompts.html">Instructions &amp; Prompts</a> ·
       Docs: <a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs guide</a>
     </p>

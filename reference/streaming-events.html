@@ -82,6 +82,15 @@
     </tbody>
   </table>
 
+  <div class="flow">
+    <h2>Structured JSON streaming</h2>
+    <p>
+      With <code>text.format: json_schema</code>, deltas are still JSON <em>text</em> chunks — not per-field events.<br>
+      Accumulate for preview; <code>JSON.parse</code> only when complete.<br>
+      SDK: <code>client.responses.stream()</code> + <code>finalResponse()</code> → <code>output_parsed</code>.
+    </p>
+  </div>
+
   <pre class="example">const stream = await client.responses.create({
   model: "gpt-4.1-nano",
   input: "Your prompt",
@@ -106,7 +115,8 @@ for await (const event of stream) {
 
   <footer>
     <p>
-      Lesson: <a href="../lessons/0002-stream-a-response.html">Lesson 2 — Stream a Response</a> ·
+      Lesson: <a href="../lessons/0002-stream-a-response.html">Lesson 2</a> ·
+      <a href="../lessons/0006-stream-structured-output.html">Lesson 6</a> ·
       Docs: <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses guide</a>
     </p>
   </footer>
