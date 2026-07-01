@@ -21,4 +21,5 @@ Responses API, streaming, tool calling, structured outputs, image generation, fi
 ## Preferences
 
 - **Structured outputs default:** Zod + `client.responses.parse()` for TypeScript practice scripts. Raw `create` + `json_schema` kept as the wire-level reference (see learning record 0006).
+- **Function tool parameters default:** Zod + `zodResponsesFunction` + `responses.parse()` for TypeScript practice scripts. Raw `create` + hand-written `parameters` JSON Schema kept as the wire-level reference (see learning record 0008).
 - **Follow-up depth:** Asks good "why is it like this?" questions (`required` vs `properties`, SDK patterns) — worth capturing in learning records, not just chat.

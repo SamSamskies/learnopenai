@@ -83,6 +83,10 @@
         <td><code>strict: true</code></td>
         <td>Arguments must match schema (same rules as <a href="structured-outputs.html">structured outputs</a>).</td>
       </tr>
+      <tr>
+        <td><code>zodResponsesFunction</code></td>
+        <td>Zod → JSON Schema <code>parameters</code>; use with <code>responses.parse()</code> for <code>parsed_arguments</code>.</td>
+      </tr>
     </tbody>
   </table>
 
@@ -103,6 +107,34 @@ const r2 = await client.responses.create({
 
 // 4. User-facing text
 r2.output_text</pre>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>SDK approach</th>
+        <th>When to use</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>create</code> + hand-written <code>parameters</code></td>
+        <td>Wire primitive; any language; full schema control — <code>practice/0007-function-tools.mjs</code></td>
+      </tr>
+      <tr>
+        <td><code>parse</code> + <code>zodResponsesFunction</code></td>
+        <td>TypeScript default — validated <code>parsed_arguments</code>, one schema for shape + handler args — <code>practice/0007-function-tools-zod.mjs</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="flow">
+    <h2>parsed_arguments</h2>
+    <p>
+      With <code>responses.parse()</code>, skip manual <code>JSON.parse(call.arguments)</code>.<br>
+      Read validated args from <code>call.parsed_arguments.parsed_arguments</code> (SDK nesting as of openai@6.45), or re-parse with the same Zod schema.<br>
+      The API still receives JSON Schema — Zod only helps on the client.
+    </p>
   </div>
 
   <table>

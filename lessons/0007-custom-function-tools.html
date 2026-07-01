@@ -158,6 +158,33 @@ console.log(second.output_text);
     Built-in tools and MCP come later.
   </p>
 
+  <h2>Optional: Zod + parsed_arguments</h2>
+
+  <p>
+    Same pattern as structured outputs: define parameters with Zod, use
+    <code>zodResponsesFunction</code>, and call
+    <code>client.responses.parse()</code> to get
+    <code>parsed_arguments</code> on each <code>function_call</code> — no
+    manual <code>JSON.parse</code>. The raw <code>parameters</code> JSON Schema
+    path in the practice script is the wire primitive underneath.
+  </p>
+
+  <pre class="example">import { zodResponsesFunction } from "openai/helpers/zod";
+
+const GetFeatureParams = z.object({
+  feature_slug: z.string().describe("e.g. dark-mode"),
+});
+
+const tools = [zodResponsesFunction({
+  name: "get_feature_status",
+  parameters: GetFeatureParams,
+  description: "Look up a feature by slug.",
+})];
+
+const first = await client.responses.parse({ input, tools });
+const call = first.output.find(i => i.type === "function_call");
+const args = call.parsed_arguments;  // Zod-validated</pre>
+
   <h2>Check your understanding</h2>
 
   <div class="quiz" id="quiz1" data-messages='{"true":"Correct. function_call lives in output — your code runs the handler.","false":"The model never executes your functions — only requests them."}'>
@@ -200,6 +227,7 @@ console.log(second.output_text);
       <li>Confirm turn 2 answers about roadmap status and priority</li>
       <li>Change the question to SSO — watch it call the tool with <code>sso</code></li>
       <li>Add a fake slug <code>widgets</code> — see how the model handles <code>found: false</code></li>
+      <li>Optional: <code>node practice/0007-function-tools-zod.mjs</code> — same loop with <code>zodResponsesFunction</code> + <code>parsed_arguments</code></li>
     </ol>
     <p>
       You now have the server loop behind "AI that can check our systems."
