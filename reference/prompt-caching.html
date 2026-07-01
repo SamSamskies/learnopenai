@@ -135,7 +135,7 @@ const input = response.usage?.input_tokens ?? 0;</pre>
     <tbody>
       <tr>
         <td>Editing instructions</td>
-        <td>Even one changed word invalidates the prefix.</td>
+        <td>New body = new prefix. Tiny edits in a huge repeated block may still partially cache.</td>
       </tr>
       <tr>
         <td>Reordering tools</td>

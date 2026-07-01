@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 12 — Background Mode</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 12 · ~10 minutes</div>
+  <h1>Background Mode</h1>
+
+  <p class="epigraph">
+    Lesson 2 held the connection open while tokens streamed.
+    Some jobs outlive your HTTP timeout — background mode lets them finish anyway.
+  </p>
+
+  <p>
+    A sync <code>responses.create</code> blocks until the model finishes
+    (<a href="0001-first-responses-api-call.html">Lesson 1</a>).
+    Streaming keeps the socket alive with partial output
+    (<a href="0002-stream-a-response.html">Lesson 2</a>).
+    But a long report, deep research pass, or heavy tool loop can exceed
+  gateway timeouts (30–60s). Set <code>background: true</code> and poll instead.
+    <a href="https://platform.openai.com/docs/guides/background">Background mode guide</a>.
+  </p>
+
+  <h2>What changes</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Returns immediately</strong></td>
+        <td>You get a <code>response.id</code> and a status — often <code>queued</code> or <code>in_progress</code> — not the final answer.</td>
+      </tr>
+      <tr>
+        <td><strong>You poll</strong></td>
+        <td><code>responses.retrieve(id)</code> until status leaves <code>queued</code> / <code>in_progress</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>Requires storage</strong></td>
+        <td><code>store: true</code> — background requests without storage are rejected.</td>
+      </tr>
+      <tr>
+        <td><strong>Not ZDR-safe</strong></td>
+        <td>Response data is retained ~10 minutes for polling. Skip background on zero-data-retention projects.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Start and poll</h2>
+
+  <pre class="example">const started = await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions: "You are a concise product writer.",
+  input: "Write a three-paragraph brief on async AI jobs.",
+  background: true,
+  store: true,
+});
+
+console.log(started.status);  // queued or in_progress — not final yet
+
+let resp = started;
+while (resp.status === "queued" || resp.status === "in_progress") {
+  await sleep(2000);
+  resp = await client.responses.retrieve(resp.id);
+}
+
+console.log(resp.status, resp.output_text);</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>What to do</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>queued</code></td>
+        <td>Keep polling</td>
+      </tr>
+      <tr>
+        <td><code>in_progress</code></td>
+        <td>Keep polling</td>
+      </tr>
+      <tr>
+        <td><code>completed</code></td>
+        <td>Read <code>output_text</code> (or <code>output</code> items)</td>
+      </tr>
+      <tr>
+        <td><code>failed</code> / <code>cancelled</code></td>
+        <td>Terminal — surface error or abort to user</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Cancel in flight</h2>
+
+  <pre class="example">await client.responses.cancel(responseId);
+// Idempotent — calling cancel twice returns the final Response.</pre>
+
+  <h2>When to use it</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Good fit</th>
+        <th>Poor fit</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Long-form generation (reports, briefs, codegen)</td>
+        <td>Chat where user waits &lt; 5s for first token — use streaming</td>
+      </tr>
+      <tr>
+        <td>Server-side jobs triggered from a webhook or queue</td>
+        <td>Zero-data-retention compliance requirements</td>
+      </tr>
+      <tr>
+        <td>Notify user when done (email, push, inbox row)</td>
+        <td>Sub-second interactive Q&amp;A</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    Return <code>response.id</code> to the client immediately (202 Accepted pattern).
+    Show a job status UI; poll your own API which calls
+    <code>responses.retrieve</code>, or push via WebSocket when complete.
+    Never block the browser on a minutes-long HTTP request.
+  </div>
+
+  <h2>Background + stream (optional)</h2>
+
+  <p>
+    You can set <code>background: true</code> and <code>stream: true</code>
+    together — the job keeps running if the client disconnects, and you can
+    resume with <code>starting_after</code> + the last
+    <code>sequence_number</code>
+    (<a href="../reference/streaming-events.html">streaming events reference</a>).
+    Useful for long streams on flaky mobile networks.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. background: true returns immediately; you poll retrieve until done.","false":"Sync create blocks until finished — that is not background mode."}'>
+    <h3>1. What does background mode do?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Returns id now; poll later</button>
+      <button data-correct="false">Blocks until the model finishes</button>
+      <button data-correct="false">Runs the model on your server</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. store: true is required for background responses.","false":"Background works without storage — store must be true."}'>
+    <h3>2. What must you set with background?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">store: true on the request</button>
+      <button data-correct="false">stream: true on the request</button>
+      <button data-correct="false">background: false on retry</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. responses.retrieve(id) until status is terminal.","false":"There is no separate job queue API — poll the Response object."}'>
+    <h3>3. How check if the job finished?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Poll responses.retrieve by id</button>
+      <button data-correct="false">Wait on the same HTTP socket</button>
+      <button data-correct="false">Read response.job_done boolean</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> start a background job and watch status move to <code>completed</code>.</p>
+    <ol>
+      <li>Run: <code>node practice/0012-background-mode.mjs</code></li>
+      <li>Step 1: confirm immediate return with <code>queued</code> or <code>in_progress</code></li>
+      <li>Step 2: watch polling lines until <code>completed</code></li>
+      <li>Read the answer preview — same content you'd get from a sync call</li>
+    </ol>
+    <p>
+      You can now ship long AI jobs without wedging them into a single HTTP
+      request. Lesson 13 will cover <strong>reasoning models</strong> — when
+      to pay for thinking tokens and how <code>reasoning.effort</code> shapes
+      latency and quality.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/background">Background mode guide</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0011-prompt-caching.html">Lesson 11 — Prompt Caching</a> ·
+      Reference: <a href="../reference/background-mode.html">Background Mode</a> ·
+      Next: Lesson 13 — Reasoning models (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

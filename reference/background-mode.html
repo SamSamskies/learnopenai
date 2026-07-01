@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Background Mode — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    .flow {
+      margin-top: 2rem;
+      padding: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    .flow h2 {
+      font-size: 0.75rem;
+      font-family: system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      border: none;
+      padding: 0;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Background Mode</h1>
+  <p class="subtitle">Async Responses API jobs — start, poll, finish without holding HTTP open.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fact</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Enable</td>
+        <td><code>background: true</code> on <code>responses.create</code></td>
+      </tr>
+      <tr>
+        <td>Requires</td>
+        <td><code>store: true</code> — stateless requests are rejected</td>
+      </tr>
+      <tr>
+        <td>Poll</td>
+        <td><code>client.responses.retrieve(response.id)</code></td>
+      </tr>
+      <tr>
+        <td>Cancel</td>
+        <td><code>client.responses.cancel(response.id)</code></td>
+      </tr>
+      <tr>
+        <td>Retention</td>
+        <td>Response data kept ~10 min for polling (not ZDR-compatible)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const started = await client.responses.create({
+  model: "gpt-4.1-nano",
+  input: longRunningTask,
+  background: true,
+  store: true,
+});
+
+let resp = started;
+while (resp.status === "queued" || resp.status === "in_progress") {
+  await sleep(2000);
+  resp = await client.responses.retrieve(resp.id);
+}
+
+console.log(resp.status, resp.output_text);</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Meaning</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>queued</code></td>
+        <td>Waiting to start — keep polling</td>
+      </tr>
+      <tr>
+        <td><code>in_progress</code></td>
+        <td>Model is working — keep polling</td>
+      </tr>
+      <tr>
+        <td><code>completed</code></td>
+        <td>Done — read <code>output_text</code></td>
+      </tr>
+      <tr>
+        <td><code>failed</code> / <code>cancelled</code></td>
+        <td>Terminal — handle error or user abort</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="flow">
+    <h2>Sync vs background vs stream</h2>
+    <p>
+      <strong>Sync</strong> (<code>background: false</code>) — hold connection until done; risk HTTP timeout on long jobs<br>
+      <strong>Stream</strong> (<a href="streaming-events.html">Lesson 2</a>) — incremental tokens over one connection; UI updates live<br>
+      <strong>Background</strong> — return <code>response.id</code> immediately; poll or notify later. Can combine <code>background: true</code> + <code>stream: true</code> to resume a dropped stream via <code>starting_after</code>
+    </p>
+  </div>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0012-background-mode.html">Lesson 12 — Background Mode</a> ·
+      Related: <a href="conversation-state.html">Conversation State</a> ·
+      Docs: <a href="https://platform.openai.com/docs/guides/background">Background mode guide</a>
+    </p>
+  </footer>
+</body>
+</html>

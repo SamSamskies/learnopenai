@@ -213,9 +213,9 @@ console.log(`${cached} / ${input} input tokens were cache hits`);</pre>
     <ol>
       <li>Run: <code>node practice/0011-prompt-caching.mjs</code></li>
       <li>Step 1 (cold): expect <code>cached_tokens: 0</code> or low</li>
-      <li>Step 2 (same instructions, new thread): expect a large <code>cached_tokens</code> jump</li>
-      <li>Step 3 (chained turn): instructions block should still cache</li>
-      <li>Step 4 (version bump in instructions): watch <code>cached_tokens</code> drop vs step 2</li>
+      <li>Step 2 (same instructions, new thread): may be 0% without <code>prompt_cache_key</code> — routing is probabilistic</li>
+      <li>Step 3 (chained turn): instructions block should still cache (~95%)</li>
+      <li>Step 4 (new handbook body): expect <code>cached_tokens: 0</code> on first hit</li>
     </ol>
     <p>
       You now know why resending <code>instructions</code> every turn is not
@@ -237,7 +237,7 @@ console.log(`${cached} / ${input} input tokens were cache hits`);</pre>
     <p style="margin-top: 0.75rem;">
       Previous: <a href="0010-state-across-tool-turns.html">Lesson 10 — State Across Tool Turns</a> ·
       Reference: <a href="../reference/prompt-caching.html">Prompt Caching</a> ·
-      Next: Lesson 12 — Background mode (coming soon) ·
+      Next: <a href="0012-background-mode.html">Lesson 12 — Background Mode</a> ·
       Mission: <a href="../MISSION.md">MISSION.md</a>
     </p>
   </footer>
