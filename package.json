@@ -20,6 +20,7 @@
   "homepage": "https://github.com/SamSamskies/learnopenai#readme",
   "dependencies": {
     "dotenv": "^17.4.2",
+    "firecrawl": "^4.29.0",
     "openai": "^6.45.0",
     "zod": "^4.4.3"
   }
