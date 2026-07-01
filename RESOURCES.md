@@ -38,6 +38,14 @@
 - [r/OpenAI](https://reddit.com/r/OpenAI) / [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA)
   Broader discussion; filter for API/product engineering threads. Use for: ecosystem awareness.
 
+## Third-party search (custom tool alternatives)
+
+Use with the Lesson 7 two-turn function pattern when built-in `web_search` is not the right fit. See learning record `0010-web-search-build-vs-buy.md`.
+
+- [Firecrawl](https://docs.firecrawl.dev/features/search) — keyless search + scrape; ~1k credits/month free. Practice: `practice/0008-firecrawl-search.mjs`.
+- [Kagi Search API](https://help.kagi.com/kagi/api/search.html) — premium search; ~$12 / 1k requests (paid).
+- [OpenAI web search pricing](https://platform.openai.com/docs/pricing) — built-in tool ~$10 / 1k search actions + model tokens.
+
 ## Gaps
 
 - Curated comparison of Responses API patterns → Anthropic Messages API / Google Gemini (needed once core OpenAI fluency is established)
