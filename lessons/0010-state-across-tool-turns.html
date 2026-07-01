@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 10 — State Across Tool Turns</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 10 · ~15 minutes</div>
+  <h1>State Across Tool Turns</h1>
+
+  <p class="epigraph">
+    Lesson 3 taught chaining.
+    Lesson 7 taught tools.
+    A real chat thread needs both — and one id rule most people get wrong.
+  </p>
+
+  <p>
+    Your product assistant can look up features, stream progress, and answer
+    follow-ups. But <strong>which <code>response.id</code> do you save</strong>
+    after a tool loop? Chain on the wrong one and the next user message loses
+    the tool result — or worse, replays a half-finished turn.
+    <a href="https://platform.openai.com/docs/guides/conversation-state">Conversation state guide</a>.
+  </p>
+
+  <h2>The id rule after a tool loop</h2>
+
+  <p>
+    A custom tool cycle is two API calls
+    (<a href="0007-custom-function-tools.html">Lesson 7</a>):
+    turn 1 ends with a <code>function_call</code>; turn 2 sends
+    <code>function_call_output</code> and gets the user-facing answer.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Response</th>
+        <th>Contains</th>
+        <th>Save as <code>lastResponseId</code>?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Turn 1 (<code>first.id</code>)</td>
+        <td>Tool call only — no final answer yet</td>
+        <td><strong>No</strong></td>
+      </tr>
+      <tr>
+        <td>Turn 2 (<code>second.id</code>)</td>
+        <td>Tool output + assistant reply</td>
+        <td><strong>Yes</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">// After the tool loop completes:
+lastResponseId = second.id;  // not first.id
+
+// Next user message:
+const next = await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions: INSTRUCTIONS,           // resend every turn
+  input: "What about SSO?",
+  previous_response_id: lastResponseId,
+  tools,                                // still declare tools
+  store: true,
+});</pre>
+
+  <div class="callout warn">
+    <strong>Streaming</strong><br>
+    When <code>stream: true</code>, read <code>event.response.id</code> from
+    <code>response.completed</code> on the <em>final</em> response in the loop
+  — turn 2 after tools, or turn 1 when no tool was called
+    (<a href="0009-streaming-tool-calls.html">Lesson 9</a>).
+  </div>
+
+  <h2>Multi-turn chat with tools</h2>
+
+  <p>
+    <a href="0003-chain-a-conversation.html">Lesson 3</a> chained plain text.
+    With tools, the pattern is the same — only the id you save changes:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Per user message</th>
+        <th>Your backend does</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Send</td>
+        <td><code>input</code> + <code>previous_response_id: lastResponseId</code> + <code>instructions</code> + <code>tools</code></td>
+      </tr>
+      <tr>
+        <td>Tool loop (if any)</td>
+        <td>Run handler → <code>function_call_output</code> → get final response</td>
+      </tr>
+      <tr>
+        <td>On complete</td>
+        <td><code>lastResponseId = finalResponse.id</code></td>
+      </tr>
+      <tr>
+        <td>New chat</td>
+        <td>Clear <code>lastResponseId</code>; omit <code>previous_response_id</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The model can answer turn 3 from memory of turn 1's tool results — you do
+    not resend <code>function_call_output</code> yourself. Server-side chaining
+    replays the full thread.
+  </p>
+
+  <h2>Three state strategies (revisited)</h2>
+
+  <p>
+    You met these in Lesson 3. Now you can choose with product context:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Approach</th>
+        <th>When to pick it</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>previous_response_id</code></td>
+        <td>Default chat threads — including tool-assisted ones</td>
+      </tr>
+      <tr>
+        <td>Manual item replay</td>
+        <td><code>store: false</code>, trim old turns, or custom context windows</td>
+      </tr>
+      <tr>
+        <td>Conversations API</td>
+        <td>Threads that survive across sessions, devices, or long retention</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    See the <a href="../reference/conversation-state.html">conversation state reference</a>
+    for the full comparison.
+  </p>
+
+  <h2>Gotchas that bite at scale</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Detail</th>
+        <th>Why it matters</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>instructions</code></td>
+        <td>Do <strong>not</strong> carry over the chain. Resend stable system prompts every turn.</td>
+      </tr>
+      <tr>
+        <td><code>tools</code></td>
+        <td>Declare on every turn that might need them — they are not inherited.</td>
+      </tr>
+      <tr>
+        <td>Token billing</td>
+        <td>Prior turns (including tool calls and outputs) bill as input each request.</td>
+      </tr>
+      <tr>
+        <td><code>store: false</code></td>
+        <td>Server cannot resolve <code>previous_response_id</code> — you must replay <code>output</code> items yourself.</td>
+      </tr>
+      <tr>
+        <td>Retention</td>
+        <td>Stored responses expire after ~30 days unless attached to a Conversations object.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    Store <code>lastResponseId</code> per thread in React state or your DB.
+    After each completed loop (streamed or blocking), persist the final id.
+    "New chat" clears it.
+  </div>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Turn 2 has the tool output and final answer — that is the chain point.","false":"Turn 1 only has the function_call — chaining there drops the tool result."}'>
+    <h3>1. After tool loop, save which id?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">The second response id</button>
+      <button data-correct="false">The first response id</button>
+      <button data-correct="false">The function call id</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. instructions do not carry over previous_response_id chains.","false":"instructions persist automatically — they do not."}'>
+    <h3>2. What resend every chained turn?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Stable instructions string</button>
+      <button data-correct="false">The prior output text</button>
+      <button data-correct="false">The function call output</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. store false means you manage replay — server chaining breaks.","false":"previous_response_id works without store — it requires store true."}'>
+    <h3>3. When is manual replay required?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">When store is set false</button>
+      <button data-correct="false">When using built-in tools</button>
+      <button data-correct="false">When streaming is enabled</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> three user messages, two tool lookups, one comparison from memory.</p>
+    <ol>
+      <li>Run: <code>node practice/0010-conversation-state.mjs</code></li>
+      <li>Confirm message 1 triggers <code>get_feature_status(dark-mode)</code></li>
+      <li>Confirm message 2 triggers a separate SSO lookup — chained, not a fresh thread</li>
+      <li>Message 3 compares both <em>without</em> new tool calls (model recalls prior results)</li>
+      <li>Break it: after message 1, set <code>lastResponseId = first.id</code> instead of <code>second.id</code> and re-run — watch message 2 lose context</li>
+    </ol>
+    <p>
+      You now have the state primitive for a multi-turn tool-assisted chat.
+      Lesson 11 will cover <strong>prompt caching</strong> — why long threads
+      cost what they cost, and how repeated prefixes get cheaper.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/conversation-state">Conversation state guide</a>
+    and
+    <a href="https://platform.openai.com/docs/guides/function-calling">Function calling — multi-turn section</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0009-streaming-tool-calls.html">Lesson 9 — Streaming Tool Calls</a> ·
+      Reference: <a href="../reference/conversation-state.html">Conversation State</a> ·
+      Next: Lesson 11 — Prompt caching (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
