@@ -21,7 +21,7 @@ async function firecrawlSearch({ query, limit = 5 }) {
     description: description ?? null,
   }));
 
-  return JSON.stringify({ query, results });
+  return { query, results };
 }
 
 const WebSearchParams = z.object({
@@ -68,8 +68,8 @@ const args =
   WebSearchParams.parse(JSON.parse(toolCall.arguments));
 console.log("parsed_arguments (Zod-validated):", args);
 
-const toolResult = await firecrawlSearch({ ...args, limit: 5 });
-console.log("Firecrawl returned:", toolResult, "\n");
+const searchPayload = await firecrawlSearch({ ...args, limit: 5 });
+console.log("Firecrawl returned:", JSON.stringify(searchPayload), "\n");
 
 // Turn 2 — model summarizes search results for the user
 const second = await client.responses.create({
@@ -79,17 +79,28 @@ const second = await client.responses.create({
     {
       type: "function_call_output",
       call_id: toolCall.call_id,
-      output: toolResult,
+      output: JSON.stringify(searchPayload),
     },
   ],
 });
 
 console.log("Final answer:");
 console.log(second.output_text);
+
+if (searchPayload.results.length) {
+  console.log("\nCitations from search results (render these in your UI):");
+  for (const { title, url } of searchPayload.results) {
+    console.log(`  - ${title ?? url}`);
+    console.log(`    ${url}`);
+  }
+}
 console.log("\nContrast with practice/0008-web-search.mjs:");
 console.log(
   "built-in web_search → OpenAI runs search + cites in one response (~$0.01/search)."
 );
 console.log(
-  "Firecrawl custom tool → you run search, two turns, you format citations (free tier / credits)."
+  "Firecrawl custom tool → you run search, two turns, you format citations from tool results (free tier / credits)."
+);
+console.log(
+  "Built-in gives url_citation annotations; custom tools give you raw URLs — same UI obligation, different source."
 );
