@@ -100,7 +100,7 @@
 
   <pre class="example">// Web search — single request
 const response = await client.responses.create({
-  model: "gpt-5.5",
+  model: "gpt-5",
   input: "What changed in the latest OpenAI changelog?",
   tools: [{ type: "web_search", search_context_size: "low" }],
 });

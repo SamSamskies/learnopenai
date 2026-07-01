@@ -73,7 +73,7 @@
   </p>
 
   <pre class="example">const response = await client.responses.create({
-  model: "gpt-5.5",
+  model: "gpt-5",
   instructions: "Answer concisely. Cite sources when you search.",
   input: "What is the current stable version of the OpenAI Node SDK?",
   tools: [{ type: "web_search", search_context_size: "low" }],
@@ -84,8 +84,9 @@ console.log(response.output_text);
 
   <div class="callout warn">
     <strong>Model and cost</strong><br>
-    Web search requires a model that supports it (e.g. <code>gpt-5.5</code>) —
-    not <code>gpt-4.1-nano</code> from earlier lessons. Each search action has
+    Web search requires a model that supports it (e.g. <code>gpt-5</code> or
+    <code>gpt-4.1-mini</code>) — not <code>gpt-4.1-nano</code> from earlier
+    lessons. Each search action has
   per-tool pricing on top of tokens. Use <code>search_context_size: "low"</code>
     for quick lookups; see
     <a href="https://platform.openai.com/docs/pricing">pricing</a>.

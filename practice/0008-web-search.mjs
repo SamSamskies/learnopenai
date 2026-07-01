@@ -4,14 +4,14 @@ import OpenAI from "openai";
 const client = new OpenAI();
 
 // Built-in tools run on OpenAI's platform — no handler code, no second turn.
-// Web search needs a model that supports it (gpt-5.5 here); costs more than nano.
+// Web search needs a model that supports it (gpt-5 here); costs more than nano.
 const question =
   "What is the current stable version of the OpenAI Node SDK on npm? One sentence.";
 
 console.log("User:", question, "\n");
 
 const response = await client.responses.create({
-  model: "gpt-5.5",
+  model: "gpt-5",
   instructions:
     "Answer concisely. Cite sources when web search is used.",
   input: question,
