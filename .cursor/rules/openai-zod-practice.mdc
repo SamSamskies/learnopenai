@@ -1,0 +1,56 @@
+---
+description: Use Zod (not hand-written JSON Schema) in OpenAI practice scripts
+globs: practice/**/*.mjs
+alwaysApply: false
+---
+
+# OpenAI practice scripts — prefer Zod
+
+Default to Zod for new or edited `practice/*.mjs` scripts. Hand-written JSON Schema is kept only in paired **wire-level reference** scripts.
+
+## Structured outputs
+
+Use `zod` + `client.responses.parse()` with a Zod schema as `text.format`.
+
+```javascript
+// ✅ default
+import { z } from "zod";
+const Schema = z.object({ ... });
+const response = await client.responses.parse({
+  model: "...",
+  input: "...",
+  text: { format: zodTextFormat(Schema, "name") },
+});
+```
+
+Reference (wire primitive): `practice/0005-structured.mjs`  
+Zod default: `practice/0005-structured-zod.mjs`
+
+## Function tool parameters
+
+Use `zodResponsesFunction` + `responses.parse()` for turn 1.
+
+```javascript
+// ✅ default
+import { zodResponsesFunction } from "openai/helpers/zod";
+const Params = z.object({ ... });
+const tools = [zodResponsesFunction({ name: "...", parameters: Params })];
+const first = await client.responses.parse({ tools, ... });
+const args =
+  toolCall.parsed_arguments?.parsed_arguments ??
+  Params.parse(JSON.parse(toolCall.arguments));
+```
+
+- Turn 2 still uses `responses.create()` + `function_call_output`.
+- Do **not** pair `create()` with `zodResponsesFunction` (no auto-parse).
+
+Reference (wire primitive): `practice/0007-function-tools.mjs`  
+Zod default: `practice/0007-function-tools-zod.mjs`, `practice/0008-firecrawl-search.mjs`
+
+## When raw JSON Schema is OK
+
+- Editing an existing `-reference` script (`0005-structured.mjs`, `0007-function-tools.mjs`)
+- User explicitly asks for the wire-level / language-agnostic primitive
+- Non-TypeScript context (docs, curl examples)
+
+See `learning-records/0006-structured-outputs-complete.md`, `learning-records/0008-function-tool-schema-conventions.md`, and `NOTES.md`.

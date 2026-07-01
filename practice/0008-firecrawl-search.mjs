@@ -1,5 +1,7 @@
 import "dotenv/config";
 import OpenAI from "openai";
+import { zodResponsesFunction } from "openai/helpers/zod";
+import { z } from "zod";
 import { Firecrawl } from "firecrawl";
 
 const client = new OpenAI();
@@ -22,25 +24,17 @@ async function firecrawlSearch({ query, limit = 5 }) {
   return JSON.stringify({ query, results });
 }
 
+const WebSearchParams = z.object({
+  query: z.string().describe("Search query — concise keywords work best."),
+});
+
 const tools = [
-  {
-    type: "function",
+  zodResponsesFunction({
     name: "web_search",
     description:
       "Search the web for current information. Use when the answer depends on live or recent data.",
-    strict: true,
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "Search query — concise keywords work best.",
-        },
-      },
-      required: ["query"],
-      additionalProperties: false,
-    },
-  },
+    parameters: WebSearchParams,
+  }),
 ];
 
 const userQuestion =
@@ -48,8 +42,8 @@ const userQuestion =
 
 console.log("User:", userQuestion, "\n");
 
-// Turn 1 — model may call your Firecrawl-backed web_search function
-const first = await client.responses.create({
+// Turn 1 — parse() auto-validates tool arguments via Zod
+const first = await client.responses.parse({
   model: "gpt-4.1-nano",
   instructions:
     "You are a helpful assistant. Use web_search when you need current information. Answer concisely and cite result URLs.",
@@ -67,10 +61,14 @@ if (!toolCall) {
 }
 
 console.log("Model requested tool:", toolCall.name);
-console.log("Arguments:", toolCall.arguments);
+console.log("arguments (raw JSON string):", toolCall.arguments);
 
-const args = JSON.parse(toolCall.arguments);
-const toolResult = await firecrawlSearch(args);
+const args =
+  toolCall.parsed_arguments?.parsed_arguments ??
+  WebSearchParams.parse(JSON.parse(toolCall.arguments));
+console.log("parsed_arguments (Zod-validated):", args);
+
+const toolResult = await firecrawlSearch({ ...args, limit: 5 });
 console.log("Firecrawl returned:", toolResult, "\n");
 
 // Turn 2 — model summarizes search results for the user
