@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Caching — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    .flow {
+      margin-top: 2rem;
+      padding: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    .flow h2 {
+      font-size: 0.75rem;
+      font-family: system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      border: none;
+      padding: 0;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Prompt Caching</h1>
+  <p class="subtitle">Automatic prefix reuse for cheaper, faster repeated prompts.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fact</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Enabled by default</td>
+        <td>No opt-in. Works on gpt-4o and newer models.</td>
+      </tr>
+      <tr>
+        <td>Minimum size</td>
+        <td>Prefix must be ≥ 1024 tokens for cache writes/reads.</td>
+      </tr>
+      <tr>
+        <td>Match rule</td>
+        <td>Exact prefix match — byte-for-byte identical start of prompt.</td>
+      </tr>
+      <tr>
+        <td>What counts in prefix</td>
+        <td><code>instructions</code>, <code>tools</code>, prior chained turns, images, structured-output schema.</td>
+      </tr>
+      <tr>
+        <td>Observe hits</td>
+        <td><code>usage.input_tokens_details.cached_tokens</code></td>
+      </tr>
+      <tr>
+        <td>Retention</td>
+        <td>In-memory ~5–10 min idle (up to 1 h). Extended <code>24h</code> on select models (e.g. gpt-4.1).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const response = await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions: stableLongInstructions,  // static — front of prompt
+  input: userMessage,                    // variable — end of prompt
+  tools,
+  store: true,
+});
+
+const cached = response.usage?.input_tokens_details?.cached_tokens ?? 0;
+const input = response.usage?.input_tokens ?? 0;</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>gpt-4.1-nano pricing</th>
+        <th>Per 1M input tokens</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Uncached input</td>
+        <td>$0.10</td>
+      </tr>
+      <tr>
+        <td>Cached input</td>
+        <td>$0.025 (75% off)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="flow">
+    <h2>Product prompt layout</h2>
+    <p>
+      <strong>Front (static)</strong> → <code>instructions</code>, tool defs, few-shot examples, RAG context that rarely changes<br>
+      <strong>End (dynamic)</strong> → user message, per-session variables, timestamps<br>
+      <strong>Chained threads</strong> → prior turns append to prefix; resending identical <code>instructions</code> each turn still caches that block
+    </p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Cache breaker</th>
+        <th>Example</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Editing instructions</td>
+        <td>Even one changed word invalidates the prefix.</td>
+      </tr>
+      <tr>
+        <td>Reordering tools</td>
+        <td><code>tools</code> array must be identical.</td>
+      </tr>
+      <tr>
+        <td>Injecting timestamps in system prompt</td>
+        <td>Put dynamic values in <code>input</code>, not <code>instructions</code>.</td>
+      </tr>
+      <tr>
+        <td>High burst rate</td>
+        <td>&gt; ~15 req/min per prefix may overflow to new machines.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0011-prompt-caching.html">Lesson 11 — Prompt Caching</a> ·
+      Related: <a href="conversation-state.html">Conversation State</a> ·
+      Docs: <a href="https://platform.openai.com/docs/guides/prompt-caching">Prompt caching guide</a>
+    </p>
+  </footer>
+</body>
+</html>

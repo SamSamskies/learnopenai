@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 11 — Prompt Caching</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 11 · ~12 minutes</div>
+  <h1>Prompt Caching</h1>
+
+  <p class="epigraph">
+    Lesson 10 chained threads.
+    Every turn still bills input tokens — but not all at full price.
+  </p>
+
+  <p>
+    You resend <code>instructions</code> every turn
+    (<a href="0004-set-system-instructions.html">Lesson 4</a>).
+    Chained history replays server-side
+    (<a href="0010-state-across-tool-turns.html">Lesson 10</a>).
+    That growing prefix is expensive — unless OpenAI has seen the
+    <strong>exact same start</strong> recently.
+    <a href="https://platform.openai.com/docs/guides/prompt-caching">Prompt caching guide</a>.
+  </p>
+
+  <h2>What it is (and isn't)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Automatic</strong></td>
+        <td>On by default for gpt-4o+. No flag to enable, no extra fee.</td>
+      </tr>
+      <tr>
+        <td><strong>Prefix match</strong></td>
+        <td>Only the identical start of your prompt can hit cache.</td>
+      </tr>
+      <tr>
+        <td><strong>Does not change output</strong></td>
+        <td>Same model, same prompt → same answer. Caching is economics + latency only.</td>
+      </tr>
+      <tr>
+        <td><strong>Not conversation memory</strong></td>
+        <td>That's <code>previous_response_id</code>. Caching discounts token prefill.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>The 1024-token floor</h2>
+
+  <p>
+    Caching activates when the prompt prefix is at least
+    <strong>1024 tokens</strong>. Shorter prompts still return
+    <code>cached_tokens: 0</code> — check the field anyway so your
+    observability is ready when prompts grow.
+  </p>
+
+  <pre class="example">const cached =
+  response.usage?.input_tokens_details?.cached_tokens ?? 0;
+const input = response.usage?.input_tokens ?? 0;
+
+console.log(`${cached} / ${input} input tokens were cache hits`);</pre>
+
+  <p>
+    On <code>gpt-4.1-nano</code>, cached input tokens bill at
+    <strong>$0.025 / 1M</strong> vs <strong>$0.10 / 1M</strong> uncached —
+    a 75% discount on the cached portion.
+    <a href="https://platform.openai.com/docs/pricing">Pricing</a>.
+  </p>
+
+  <h2>Static front, dynamic end</h2>
+
+  <p>
+    Cache hits require an <em>exact</em> prefix. Structure every request so
+    stable content comes first and per-user content comes last:
+  </p>
+
+  <pre class="example">await client.responses.create({
+  model: "gpt-4.1-nano",
+  instructions: productHandbook,   // same every request — FRONT
+  tools,                            // stable tool defs — FRONT
+  input: userMessage,               // changes each turn — END
+  previous_response_id: lastId,     // chained history — middle/end
+  store: true,
+});</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Put at the front (static)</th>
+        <th>Put at the end (dynamic)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>System instructions, brand voice, policies</td>
+        <td>User's message this turn</td>
+      </tr>
+      <tr>
+        <td>Tool definitions (<code>tools</code> array)</td>
+        <td>Session-specific variables</td>
+      </tr>
+      <tr>
+        <td>Few-shot examples, product FAQ</td>
+        <td>Timestamps, user name, locale</td>
+      </tr>
+      <tr>
+        <td>Structured-output schema</td>
+        <td>Per-request RAG snippets that differ</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>Cache breaker</strong><br>
+    <code>instructions: `Today is ${new Date()}`</code> in your system prompt
+    changes every request — zero cache hits. Pass the date in
+    <code>input</code> instead.
+  </div>
+
+  <h2>How chaining interacts</h2>
+
+  <p>
+    With <code>previous_response_id</code>, the server replays prior turns into
+    the prefix. Turn 3's prefix is roughly:
+  </p>
+
+  <pre class="example">[instructions] + [tools] + [turn 1] + [turn 2] + [new user message]</pre>
+
+  <p>
+    You still resend identical <code>instructions</code> each turn — that block
+    can cache even as the conversation tail grows. The <em>new</em> user message
+    and latest turn are uncached; the shared front is discounted.
+  </p>
+
+  <div class="callout">
+    <strong>Frontend mapping</strong><br>
+    Store <code>instructions</code> in a versioned prompt module — not rebuilt
+    per render. Log <code>cached_tokens</code> per request in your API layer.
+    Alert when a deploy changes instructions and cache hit rate drops.
+  </div>
+
+  <h2>Optional knobs</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Parameter</th>
+        <th>When to use</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>prompt_cache_key</code></td>
+        <td>Many tenants share the same long prefix — route them to the same cache shard.</td>
+      </tr>
+      <tr>
+        <td><code>prompt_cache_retention</code></td>
+        <td><code>"24h"</code> on supported models (e.g. gpt-4.1) for longer retention vs in-memory.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Skip these until you have cache metrics. The default behavior is enough for
+    v1 products.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Caching is automatic on supported models — just structure prompts well.","false":"No opt-in flag exists — caching is already on."}'>
+    <h3>1. How do you enable caching?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">You do not — it is automatic</button>
+      <button data-correct="false">Set cache true on request</button>
+      <button data-correct="false">Pass a cache id header</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Variable content at the end preserves a stable cacheable prefix.","false":"Dynamic content belongs at the end — not mixed into instructions."}'>
+    <h3>2. Where put the user message?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">At the end of the prompt</button>
+      <button data-correct="false">Inside instructions string</button>
+      <button data-correct="false">Before the tools array</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. usage.input_tokens_details.cached_tokens reports cache hits.","false":"There is no separate cache_hit field — use cached_tokens."}'>
+    <h3>3. How observe cache hits?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Read cached_tokens in usage</button>
+      <button data-correct="false">Check response.cache_hit boolean</button>
+      <button data-correct="false">Compare latency only</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> see <code>cached_tokens</code> go from 0 to &gt; 0 on a repeated prefix.</p>
+    <ol>
+      <li>Run: <code>node practice/0011-prompt-caching.mjs</code></li>
+      <li>Step 1 (cold): expect <code>cached_tokens: 0</code> or low</li>
+      <li>Step 2 (same instructions, new thread): expect a large <code>cached_tokens</code> jump</li>
+      <li>Step 3 (chained turn): instructions block should still cache</li>
+      <li>Step 4 (version bump in instructions): watch <code>cached_tokens</code> drop vs step 2</li>
+    </ol>
+    <p>
+      You now know why resending <code>instructions</code> every turn is not
+      wasteful — and how to structure prompts so it stays cheap.
+      Lesson 12 will cover <strong>background mode</strong> — responses that
+      outlive your HTTP timeout.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/prompt-caching">Prompt caching guide</a>
+    and
+    <a href="https://platform.openai.com/docs/pricing">API pricing (cached input column)</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0010-state-across-tool-turns.html">Lesson 10 — State Across Tool Turns</a> ·
+      Reference: <a href="../reference/prompt-caching.html">Prompt Caching</a> ·
+      Next: Lesson 12 — Background mode (coming soon) ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
