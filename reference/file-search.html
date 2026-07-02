@@ -169,7 +169,71 @@ msg?.content[0].annotations;  // [{ type: "file_citation", filename, file_id, in
     Compare: <code>web_search</code> is ~$10 / 1k calls — file search is cheaper
     per call but adds storage. Custom RAG can win at scale; hosted wins when you
     want zero retrieval infra. Source:
-    <a href="https://platform.openai.com/docs/pricing">pricing</a>.
+    <a href="https://platform.openai.com/docs/pricing">OpenAI pricing</a>.
+  </p>
+
+  <h2 id="hosted-rag-across-providers">Hosted RAG across providers</h2>
+
+  <p style="font-size: 0.95rem;">
+    “Hosted RAG” = upload docs, ask questions, get citations — minimal retrieval
+    code. Vector-DB free tiers (Supabase, Pinecone, Qdrant) are cheaper at scale
+    but you wire chunking, embeddings, and the LLM yourself.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Option</th>
+        <th>Free tier highlights</th>
+        <th>Tradeoff</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>OpenAI</strong> <code>file_search</code></td>
+        <td>1 GB storage free; fine for practice</td>
+        <td>$0.10/GB/day storage + $2.50/1k calls; stays in Responses API</td>
+      </tr>
+      <tr>
+        <td><strong>Google</strong> File Search</td>
+        <td>1 GB storage; indexing free on free tier</td>
+        <td>No per-search fee; different API (<code>generateContent</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Supabase</strong> pgvector</td>
+        <td>500 MB DB with vectors</td>
+        <td>DIY retrieval loop; project pauses after 1 week idle</td>
+      </tr>
+      <tr>
+        <td><strong>Pinecone</strong> Starter</td>
+        <td>2 GB vector storage + read/write quotas</td>
+        <td>Vector DB only — add embeddings + LLM</td>
+      </tr>
+      <tr>
+        <td><strong>Qdrant</strong> Cloud</td>
+        <td>~1 GB permanent free tier</td>
+        <td>Same — retrieval infra, not end-to-end RAG</td>
+      </tr>
+      <tr>
+        <td><strong>Anthropic</strong></td>
+        <td>Files API (attach docs to messages)</td>
+        <td>No hosted semantic search over a corpus</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">Hosted doc Q&A, minimal code     → Gemini File Search (generous free tier)
+Already on Responses API stack   → OpenAI file_search (simplest integration)
+Max free experimentation + code OK → Supabase pgvector or Pinecone/Qdrant + your embeddings</pre>
+
+  <p style="font-size: 0.95rem;">
+    Sources:
+    <a href="https://ai.google.dev/gemini-api/docs/file-search">Gemini File Search</a> ·
+    <a href="https://ai.google.dev/gemini-api/docs/pricing">Gemini pricing</a> ·
+    <a href="https://supabase.com/pricing">Supabase pricing</a> ·
+    <a href="https://www.pinecone.io/pricing/">Pinecone pricing</a> ·
+    <a href="https://platform.claude.com/docs/en/build-with-claude/files">Claude Files API</a>.
+    See also <a href="../RESOURCES.md">RESOURCES.md</a> — Hosted RAG section.
   </p>
 
   <h2>Model choice</h2>

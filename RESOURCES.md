@@ -50,7 +50,18 @@ Use with the Lesson 7 two-turn function pattern when built-in `web_search` is no
 - [Kagi Search API](https://help.kagi.com/kagi/api/search.html) — premium search; ~$12 / 1k requests (paid).
 - [OpenAI web search pricing](https://platform.openai.com/docs/pricing) — built-in tool ~$10 / 1k search actions + model tokens.
 
+## Hosted RAG (cross-provider)
+
+Use when evaluating doc-Q&A build vs buy beyond OpenAI. Full table in [reference/file-search.html](./reference/file-search.html#hosted-rag-across-providers).
+
+- [OpenAI file search](https://platform.openai.com/docs/guides/tools-file-search) — `file_search` built-in on Responses API; $0.10/GB/day storage (1 GB free) + $2.50/1k tool calls + model tokens. Best when already on the OpenAI stack.
+- [Gemini File Search](https://ai.google.dev/gemini-api/docs/file-search) — closest hosted-RAG peer; free storage, free query embeddings, 1 GB on free tier; indexing free on free tier ([pricing](https://ai.google.dev/gemini-api/docs/pricing)). Different API surface — not a drop-in swap.
+- [Supabase pgvector](https://supabase.com/docs/guides/database/extensions/pgvector) — 500 MB free DB with vectors ([pricing](https://supabase.com/pricing)). Generous for learning; you write the retrieval loop (embed → search → LLM).
+- [Pinecone Starter](https://www.pinecone.io/pricing/) — 2 GB free vector storage; vector DB only — wire embeddings + LLM yourself.
+- [Qdrant Cloud](https://qdrant.tech/pricing/) — ~1 GB permanent free tier; same DIY pattern as Pinecone.
+- [Claude Files API](https://platform.claude.com/docs/en/build-with-claude/files) — attach files to messages; no hosted semantic corpus search equivalent to `file_search`.
+
 ## Gaps
 
-- Curated comparison of Responses API patterns → Anthropic Messages API / Google Gemini (needed once core OpenAI fluency is established)
+- Broader Responses API patterns → Anthropic Messages API / Google Gemini (streaming, tools, state) — partial RAG comparison above
 - Cost budgeting guide for solo builders doing API experimentation
