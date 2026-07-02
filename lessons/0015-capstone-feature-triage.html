@@ -160,9 +160,11 @@ card: TriageCard | null       // set once after finalResponse()</pre>
     shipped surface.
   </p>
 
-  <div class="quiz" id="quiz1">
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Turn 1 is the tool call; turn 2 returns typed JSON grounded in tool output.","false":"Turn 1 is for the tool call; structured output fits the second turn triage card."}'>
     <h3>1. Why structured output on turn 2, not turn 1?</h3>
-    <div class="options">
+    <div class="quiz-options">
       <button data-correct="false">The API forbids schemas with tools</button>
       <button data-correct="true">Turn 1 is for the tool call; turn 2 answers with typed JSON</button>
       <button data-correct="false">Structured output only works on gpt-5</button>
@@ -170,9 +172,9 @@ card: TriageCard | null       // set once after finalResponse()</pre>
     <div class="feedback" id="quiz1-feedback"></div>
   </div>
 
-  <div class="quiz" id="quiz2">
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Use output_parsed after finalResponse — same rule as Lesson 6.","false":"Deltas are raw JSON text — render typed fields only after the stream completes."}'>
     <h3>2. What does the UI render from turn 2?</h3>
-    <div class="options">
+    <div class="quiz-options">
       <button data-correct="false">Each delta as a separate field</button>
       <button data-correct="true">output_parsed after the stream completes</button>
       <button data-correct="false">function_call_output directly</button>
@@ -180,9 +182,9 @@ card: TriageCard | null       // set once after finalResponse()</pre>
     <div class="feedback" id="quiz2-feedback"></div>
   </div>
 
-  <div class="quiz" id="quiz3">
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. previous_response_id ties turn 2 to turn 1 response.","false":"Use previous_response_id — do not resend full history manually."}'>
     <h3>3. What chains turn 1 to turn 2?</h3>
-    <div class="options">
+    <div class="quiz-options">
       <button data-correct="true">previous_response_id from turn 1</button>
       <button data-correct="false">Resending the full message history manually</button>
       <button data-correct="false">A separate thread ID per tool</button>
