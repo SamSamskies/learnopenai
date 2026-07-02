@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 24 — Image Generation</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 24 · ~20 minutes</div>
+  <h1>Image Generation</h1>
+
+  <p class="epigraph">
+    Text APIs answer questions.
+    Image APIs ship pixels.
+  </p>
+
+  <p>
+    <a href="0023-multi-turn-triage.html">Lesson 23</a> finished the capstone
+    conversation loop. Image generation is the last core OpenAI primitive on your
+    curriculum list — and it uses a <strong>different mental model</strong> than
+    chat tokens. You pay per image (quality × size), store binary output yourself,
+    and choose between two APIs depending on whether the UX is one-shot or
+    conversational.
+  </p>
+
+  <h2>Two APIs, one platform</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Product shape</th>
+        <th>API</th>
+        <th>SDK call</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>“Generate cover art” button</td>
+        <td><strong>Image API</strong></td>
+        <td><code>client.images.generate()</code></td>
+      </tr>
+      <tr>
+        <td>“Chat to refine this mockup”</td>
+        <td><strong>Responses API</strong></td>
+        <td><code>tools: [{ type: "image_generation" }]</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Full cheat sheet:
+    <a href="../reference/image-generation.html">image generation reference</a>.
+  </p>
+
+  <h2>Image API — your first win</h2>
+
+  <p>
+    One prompt in, one PNG out. Pick a GPT Image model
+    (<code>gpt-image-1-mini</code> is the budget learner default;
+    <code>gpt-image-2</code> is newest). GPT Image models return
+    <code>b64_json</code> by default — save the bytes to your own storage.
+    Legacy DALL·E models accept <code>response_format: "url"</code> instead.
+  </p>
+
+  <pre class="example">const result = await client.images.generate({
+  model: "gpt-image-1-mini",
+  prompt: "Minimal flat icon, green checkmark badge, white background",
+  size: "1024x1024",
+  quality: "low",
+});
+
+const b64 = result.data[0].b64_json;
+fs.writeFileSync("badge.png", Buffer.from(b64, "base64"));</pre>
+
+  <div class="callout warn">
+    <strong>GPT Image may need org verification.</strong><br>
+    If you get a verification error, complete API organization verification in
+    the OpenAI dashboard — or set <code>IMAGE_MODEL</code> in <code>.env</code>
+    to a model your account can access. Image calls are billed separately from
+    chat tokens; start with <code>quality: "low"</code>.
+  </div>
+
+  <h2>Responses API — built-in tool</h2>
+
+  <p>
+    Same pattern as <a href="0008-built-in-tools.html">Lesson 8</a>
+    (<code>web_search</code>, <code>file_search</code>): register a built-in tool,
+    read platform output items. The image lands in an
+    <code>image_generation_call</code> — not <code>output_text</code>.
+  </p>
+
+  <pre class="example">const response = await client.responses.create({
+  model: "gpt-5-mini",
+  input: "Generate a friendly green otter mascot in a hard hat",
+  tools: [{ type: "image_generation" }],
+  store: true,
+});
+
+const call = response.output.find((o) => o.type === "image_generation_call");
+fs.writeFileSync("mascot.png", Buffer.from(call.result, "base64"));
+// call.revised_prompt — mainline model may rewrite your prompt</pre>
+
+  <p>
+    Multi-turn edits reuse
+    <a href="../reference/conversation-state.html">conversation state</a> from
+    Lesson 10 / 23 — chain with <code>previous_response_id</code> and a new
+    instruction (“make it watercolor”).
+  </p>
+
+  <h2>Pricing</h2>
+
+  <p>
+    <code>quality</code> is the biggest cost lever — low → high is roughly 7–35×.
+    Your practice script at <code>gpt-image-1-mini</code> + low is about
+    <strong>half a cent per image</strong>. Full pricing table:
+    <a href="../reference/image-generation.html#pricing">image generation reference → Pricing</a>.
+  </p>
+
+  <h2>Product decisions</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Decision</th>
+        <th>Recommendation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Where images live</td>
+        <td>Your object storage (S3, R2, Vercel Blob) — not the client bundle</td>
+      </tr>
+      <tr>
+        <td>Progressive UI</td>
+        <td>Stream with <code>partial_images</code> (costs extra per partial)</td>
+      </tr>
+      <tr>
+        <td>Route design</td>
+        <td>Same server boundary as triage — API key stays server-side</td>
+      </tr>
+      <tr>
+        <td>When to skip OpenAI</td>
+        <td>High-volume asset pipelines → compare Fal, Replicate, Stability</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">Browser                POST /api/generate-image
+  │  { prompt }              │
+  │─────────────────────────►│ auth → rate limit
+  │                          │ client.images.generate({ prompt })
+  │                          │ upload b64 → your storage → return URL
+  │◄── { imageUrl } ─────────│</pre>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. One prompt, one PNG — Image API.","false":"Conversational edits use Responses image_generation."}'>
+    <h3>1. Best API for a single Generate button?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Image API images.generate</button>
+      <button data-correct="false">Responses file_search tool</button>
+      <button data-correct="false">Chat Completions messages only</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. image_generation_call holds base64 result.","false":"Images are not in output_text."}'>
+    <h3>2. Where is the image in Responses output?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">image_generation_call result field</button>
+      <button data-correct="false">output_text as a data URL</button>
+      <button data-correct="false">function_call arguments JSON</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. You persist bytes — URLs from OpenAI expire.","false":"Rely on the hosted url field long-term."}'>
+    <h3>3. Why prefer b64_json over url?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">You control durable storage of the file</button>
+      <button data-correct="false">b64_json is always cheaper per image</button>
+      <button data-correct="false">url works offline in production</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>20-minute win:</strong> generate a PNG from your terminal.</p>
+    <ol>
+      <li>Run: <code>node practice/0024-image-generation.mjs</code></li>
+      <li>Open <code>practice/output/badge-image-api.png</code></li>
+      <li>Note model, quality, and any <code>revised_prompt</code> in the console</li>
+      <li>Stretch: <code>node practice/0024-image-generation.mjs --responses</code> — compare v1 vs watercolor v2</li>
+      <li>Skim <a href="../reference/image-generation.html">image generation reference</a> — Image API vs Responses table</li>
+      <li>Sketch how <code>/api/generate-image</code> would reuse your triage guard from Lesson 22</li>
+    </ol>
+    <p>
+      That completes your required OpenAI platform skills list. Optional next:
+      <strong>cross-provider comparison</strong> — map Responses API primitives
+      to Anthropic Messages and Gemini (mission success criterion #4).
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/image-generation">OpenAI Image Generation guide</a>
+    (Image API, Responses <code>image_generation</code> tool, streaming, edits).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0023-multi-turn-triage.html">Lesson 23 — Multi-turn Triage</a> ·
+      Reference: <a href="../reference/image-generation.html">Image Generation</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

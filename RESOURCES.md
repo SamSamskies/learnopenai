@@ -32,6 +32,8 @@
   Per-model token and tool pricing. Use for: model selection and cost modeling.
 - [OpenAI Agents SDK](https://platform.openai.com/docs/guides/agents)
   Orchestration layer on top of Responses API. Use for: multi-step agent workflows.
+- [Image generation](https://platform.openai.com/docs/guides/image-generation)
+  Image API (`images.generate` / `images.edit`) and Responses `image_generation` built-in tool. Use for: product image features, conversational mockup editors.
 - [openai-responses-starter-app](https://github.com/openai/openai-responses-starter-app)
   Official starter repo. Use for: reference implementation patterns.
 
