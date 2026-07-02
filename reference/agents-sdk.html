@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agents SDK — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Agents SDK</h1>
+  <p class="subtitle">Orchestration on top of the Responses API — TypeScript / Python.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Layer</th>
+        <th>You own</th>
+        <th>SDK owns</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Raw Responses API</strong></td>
+        <td>Every turn, tool loop, state chain</td>
+        <td>Model + hosted tools only</td>
+      </tr>
+      <tr>
+        <td><strong>Agents SDK</strong></td>
+        <td>Agent defs, tool <code>execute</code>, product logic</td>
+        <td>Tool loop, handoffs, tracing, sessions</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Core API</h2>
+
+  <pre class="example">import { Agent, run, tool } from "@openai/agents";
+import { z } from "zod";
+
+const lookup = tool({
+  name: "get_feature_status",
+  description: "Look up backlog by slug.",
+  parameters: z.object({ feature_slug: z.string() }),
+  execute: async ({ feature_slug }) => { /* your handler */ },
+});
+
+const agent = new Agent({
+  name: "Product Triage",
+  model: "gpt-4.1-nano",
+  instructions: "Use tools when you need live data.",
+  tools: [lookup],
+  outputType: TriageCardSchema,  // optional Zod structured output
+});
+
+const result = await run(agent, userMessage, { maxTurns: 5 });
+result.finalOutput;   // typed when outputType set
+result.newItems;      // tool calls, messages, handoffs
+result.lastAgent;     // which agent answered
+result.history;       // pass back for turn 2</pre>
+
+  <h2>The agent loop</h2>
+
+  <pre class="example">inspect model response
+  → final output?     return result
+  → handoff?          switch agent, continue
+  → tool calls?       execute tools, append results, loop</pre>
+
+  <p>
+    Same semantics as your hand-rolled capstone loop — the SDK just runs it until
+    <code>finalOutput</code> or <code>maxTurns</code>.
+  </p>
+
+  <h2>When to use which</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Stay on raw Responses API</th>
+        <th>Reach for Agents SDK</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>One or two turns you control</td>
+        <td>Multi-step tool loops (3+ turns)</td>
+      </tr>
+      <tr>
+        <td>Custom streaming UI reducer (Lesson 16)</td>
+        <td>Multiple specialist agents + handoffs</td>
+      </tr>
+      <tr>
+        <td>Minimal deps, wire-level learning</td>
+        <td>Guardrails, approvals, tracing out of the box</td>
+      </tr>
+      <tr>
+        <td>Built-in tools only, one request</td>
+        <td>Mix function tools + hosted tools + MCP in one agent</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>State strategies</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Strategy</th>
+        <th>Next turn you pass</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>result.history</code></td>
+        <td>Full history — client-managed</td>
+      </tr>
+      <tr>
+        <td><code>session</code></td>
+        <td>Same session instance — persistent chat</td>
+      </tr>
+      <tr>
+        <td><code>previousResponseId</code></td>
+        <td><code>result.lastResponseId</code> + new user message</td>
+      </tr>
+      <tr>
+        <td><code>conversationId</code></td>
+        <td>Same id + new user message — OpenAI-managed</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Hosted tool helpers</h2>
+
+  <p>Same built-ins as Lesson 8 / 17 — SDK wraps them:</p>
+
+  <pre class="example">import {
+  webSearchTool,
+  fileSearchTool,
+  codeInterpreterTool,
+} from "@openai/agents";
+
+tools: [
+  webSearchTool({ searchContextSize: "medium" }),
+  fileSearchTool(process.env.FILE_SEARCH_VECTOR_STORE_ID, { maxNumResults: 3 }),
+]</pre>
+
+  <h2>Handoffs (multi-agent)</h2>
+
+  <pre class="example">const triage = Agent.create({
+  name: "Triage",
+  instructions: "Route to the right specialist.",
+  handoffs: [historyAgent, mathAgent],
+});
+// Model picks handoff → SDK switches agent → loop continues</pre>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0018-agents-sdk.html">Lesson 18 — Agents SDK</a> ·
+      Capstone: <a href="capstone-pattern.html">Capstone Pattern</a> ·
+      Practice: <code>practice/0018-agents-sdk.mjs</code> ·
+      <a href="https://openai.github.io/openai-agents-js/">TypeScript SDK docs</a>
+    </p>
+  </footer>
+</body>
+</html>

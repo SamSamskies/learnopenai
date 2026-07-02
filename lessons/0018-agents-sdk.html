@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 18 — Agents SDK</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 18 · ~15 minutes</div>
+  <h1>Agents SDK</h1>
+
+  <p class="epigraph">
+    You learned the loop by hand.
+    The SDK runs it for you.
+  </p>
+
+  <p>
+    <a href="0017-file-search.html">Lesson 17</a> closed the four tool patterns.
+    <a href="0015-capstone-feature-triage.html">Lesson 15</a> wired the capstone
+    yourself: stream turn 1 → run handler → stream turn 2. That two-turn loop
+    is the right way to <em>learn</em> the platform. When orchestration grows —
+    more tools, more turns, specialist agents — the
+    <strong>Agents SDK</strong> takes over the loop while you keep the product
+    logic.
+    <a href="https://platform.openai.com/docs/guides/agents">Agents guide</a>.
+  </p>
+
+  <h2>Responses API vs Agents SDK</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Responses API (Lessons 1–17)</th>
+        <th>Agents SDK (this lesson)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>You call <code>responses.create</code> each turn</td>
+        <td>You call <code>run(agent, input)</code> once</td>
+      </tr>
+      <tr>
+        <td>You detect tool calls and loop</td>
+        <td>SDK executes tools and loops until done</td>
+      </tr>
+      <tr>
+        <td>You chain <code>previous_response_id</code></td>
+        <td>SDK manages history, sessions, or server state</td>
+      </tr>
+      <tr>
+        <td>Full control over streaming events</td>
+        <td>Optional <code>stream: true</code> + built-in traces</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Rule of thumb</strong><br>
+    Stay on raw Responses API when you need tight control (custom UI reducer from
+    <a href="0016-streaming-ui-state-machine.html">Lesson 16</a>, one-shot built-ins
+    from <a href="0008-built-in-tools.html">Lesson 8</a>). Reach for the SDK when
+    the agent loop itself becomes your maintenance burden.
+  </div>
+
+  <p>
+    See <a href="../reference/agents-sdk.html">Agents SDK reference</a> and
+    <a href="../reference/capstone-pattern.html">capstone pattern</a>.
+  </p>
+
+  <h2>Three building blocks</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Primitive</th>
+        <th>Role</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Agent</code></td>
+        <td>Name, instructions, model, tools, optional <code>outputType</code></td>
+      </tr>
+      <tr>
+        <td><code>tool()</code></td>
+        <td>Zod params + <code>execute</code> — replaces your handler wiring</td>
+      </tr>
+      <tr>
+        <td><code>run()</code></td>
+        <td>Starts the loop; returns <code>finalOutput</code>, <code>newItems</code>, <code>history</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">import { Agent, run, tool } from "@openai/agents";
+import { z } from "zod";
+
+const getFeatureStatus = tool({
+  name: "get_feature_status",
+  description: "Look up a product feature by slug.",
+  parameters: z.object({ feature_slug: z.string() }),
+  execute: async ({ feature_slug }) => {
+    // same handler body as Lesson 15
+    return JSON.stringify({ found: true, title: "Dark mode", ... });
+  },
+});
+
+const TriageCard = z.object({
+  feature_title: z.string(),
+  current_status: z.enum(["shipped", "planned", "backlog", "unknown"]),
+  priority: z.enum(["low", "medium", "high", "unknown"]),
+  recommendation: z.string(),
+});
+
+const agent = new Agent({
+  name: "Product Triage",
+  model: "gpt-4.1-nano",
+  instructions: "Use get_feature_status for backlog data.",
+  tools: [getFeatureStatus],
+  outputType: TriageCard,   // structured output — like zodTextFormat
+});
+
+const result = await run(agent, userQuestion, { maxTurns: 5 });
+result.finalOutput;  // → typed TriageCard</pre>
+
+  <h2>The agent loop</h2>
+
+  <p>
+    Under the hood, <code>run()</code> repeats what you wrote manually in the
+    capstone:
+  </p>
+
+  <pre class="example">1. Call model with instructions + tools + history
+2. Model returns final text / structured output → done
+3. Model returns tool calls → execute your execute() handlers
+4. Append tool results → go to 1
+5. Model requests handoff → switch agent → go to 1</pre>
+
+  <p>
+    <code>maxTurns</code> (default 10) is your safety rail — same reason you
+    would cap a hand-rolled loop.
+  </p>
+
+  <h2>Capstone refactor</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Lesson 15 (hand-rolled)</th>
+        <th>Lesson 18 (Agents SDK)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Tool definition</strong></td>
+        <td><code>zodResponsesFunction</code> + separate handler fn</td>
+        <td><code>tool({ execute })</code> — schema + handler together</td>
+      </tr>
+      <tr>
+        <td><strong>Structured output</strong></td>
+        <td>Turn 2 <code>zodTextFormat</code></td>
+        <td><code>outputType: TriageCard</code> on the agent</td>
+      </tr>
+      <tr>
+        <td><strong>Loop</strong></td>
+        <td>Two explicit <code>responses.stream</code> calls</td>
+        <td>One <code>run()</code> — SDK loops as needed</td>
+      </tr>
+      <tr>
+        <td><strong>Streaming UI</strong></td>
+        <td>You map events → phases (Lesson 16)</td>
+        <td><code>run(agent, input, { stream: true })</code> or keep raw API for UI</td>
+      </tr>
+      <tr>
+        <td><strong>Observability</strong></td>
+        <td>Your logs</td>
+        <td>Auto traces in OpenAI dashboard</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>Streaming tradeoff</strong><br>
+    The capstone UI reducer (Lesson 16) maps raw Responses API events to phases.
+    The SDK can stream run events, but many production apps keep the server on raw
+    <code>responses.stream</code> for UI control and use the SDK for backend
+    orchestration jobs. Both patterns are valid.
+  </div>
+
+  <h2>Handoffs — when one agent isn't enough</h2>
+
+  <p>
+    Define specialist agents and let a triage agent route between them:
+  </p>
+
+  <pre class="example">const backlogAgent = new Agent({
+  name: "Backlog",
+  instructions: "Answer roadmap questions using get_feature_status.",
+  tools: [getFeatureStatus],
+});
+
+const docsAgent = new Agent({
+  name: "Docs",
+  instructions: "Answer from uploaded PRDs.",
+  tools: [fileSearchTool(process.env.FILE_SEARCH_VECTOR_STORE_ID)],
+});
+
+const triage = Agent.create({
+  name: "Triage",
+  instructions: "Route backlog questions vs doc questions.",
+  handoffs: [backlogAgent, docsAgent],
+});
+
+const result = await run(triage, "What does the PRD say about dark mode?");
+console.log(result.lastAgent.name);  // → "Docs"</pre>
+
+  <p>
+    This is the natural next step after Lesson 17 — mix custom tools and
+    <code>file_search</code> behind one entry point.
+  </p>
+
+  <h2>What the SDK adds beyond the loop</h2>
+
+  <ul>
+    <li><strong>Traces</strong> — every run appears in the OpenAI dashboard for debugging</li>
+    <li><strong>Sessions</strong> — persistent chat without manually passing history</li>
+    <li><strong>Guardrails</strong> — block bad inputs/outputs before they reach users</li>
+    <li><strong>Human-in-the-loop</strong> — <code>needsApproval</code> on tools pauses for review</li>
+    <li><strong>Hosted tool helpers</strong> — <code>webSearchTool()</code>, <code>fileSearchTool()</code>, etc.</li>
+  </ul>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. SDK shines when loops grow.","false":"Raw API is fine for simple flows — SDK when loops grow."}'>
+    <h3>1. When reach for Agents SDK?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">One model call is enough</button>
+      <button data-correct="true">Multi-step tool loop grows</button>
+      <button data-correct="false">SDK replaces all API calls</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. run() loops until finalOutput.","false":"run() executes tools and loops — not just one call."}'>
+    <h3>2. What does run() do?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Runs tool loop automatically</button>
+      <button data-correct="false">Only runs one model call</button>
+      <button data-correct="false">Replaces your API key setup</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Handoffs switch specialist agents mid-run.","false":"Handoffs route between agents — not file uploads."}'>
+    <h3>3. What are handoffs for?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Switch agents mid conversation</button>
+      <button data-correct="false">Upload files to vector store</button>
+      <button data-correct="false">Stream structured JSON only</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>15-minute win:</strong> refactor the capstone triage flow with the Agents SDK.</p>
+    <ol>
+      <li>Install: <code>npm install @openai/agents</code> (already in this repo)</li>
+      <li>Run: <code>node practice/0018-agents-sdk.mjs</code></li>
+      <li>Confirm the SDK called <code>get_feature_status</code> without you writing a turn loop</li>
+      <li>Inspect <code>result.finalOutput</code> — same <code>TriageCard</code> shape as Lesson 15</li>
+      <li>Open the OpenAI dashboard → Traces — find the run the SDK logged automatically</li>
+      <li>Compare line count with <code>practice/0015-capstone-feature-triage.mjs</code></li>
+      <li>Optional: add <code>fileSearchTool</code> from Lesson 17 and a second agent with handoffs</li>
+    </ol>
+    <p>
+      You can now choose raw API vs SDK per feature. Next:
+      <strong>ship the capstone in a real app</strong> — wire the Lesson 16 reducer
+      into a Next.js API route, or extend this agent with guardrails when you
+      need human approval on tool calls.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://openai.github.io/openai-agents-js/guides/quickstart/">Agents SDK quickstart</a>
+    (Agent, tool, run, handoffs, traces).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0017-file-search.html">Lesson 17 — File Search</a> ·
+      Reference: <a href="../reference/agents-sdk.html">Agents SDK</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
