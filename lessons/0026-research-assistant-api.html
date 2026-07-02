@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 26 — Research API</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 26 · ~30 minutes</div>
+  <h1>Research API</h1>
+
+  <p class="epigraph">
+    Prove the server loop in the terminal.
+    Wire the browser later.
+  </p>
+
+  <p>
+    <a href="0025-research-assistant-scaffold.html">Lesson 25</a> gave you the shell.
+    Before touching React state, add a <strong>route handler</strong> that calls
+    OpenAI with <code>web_search</code> and returns JSON. Same discipline as
+    <a href="0019-ship-triage-api.html">Lesson 19</a> — server owns the API key;
+    you test with <code>curl</code> first.
+  </p>
+
+  <h2>Why API before UI</h2>
+
+  <p>
+    Streaming UI (Lesson 27) is harder to debug than a single POST. If citations
+    are wrong or the model skips search, you want to see that in a JSON body —
+    not buried in React state. One vertical slice: request in, answer + sources out.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Triage capstone</th>
+        <th>This lesson</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>practice/0019-ship-triage-api.mjs</code> + SSE</td>
+        <td><code>app/api/research/route.ts</code> + JSON</td>
+      </tr>
+      <tr>
+        <td>Two-turn custom tool loop</td>
+        <td>One-turn <code>web_search</code> built-in</td>
+      </tr>
+      <tr>
+        <td>Structured triage card</td>
+        <td>Plain text answer + <code>url_citation</code> annotations</td>
+      </tr>
+      <tr>
+        <td>Browser demo at end</td>
+        <td><code>curl</code> only — UI wired in Lesson 27</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">curl / Postman              Next.js route              OpenAI
+     │  POST /api/research              │
+     │  { "message": "..." }            │
+     │─────────────────────────────────►│ openai.responses.create
+     │                                  │ tools: [{ type: "web_search" }]
+     │◄── { answer, citations } ────────│ platform runs search → message
+     │                                  │</pre>
+
+  <p>
+  <code>web_search</code> is a built-in tool from
+  <a href="0008-built-in-tools.html">Lesson 8</a> — no handler, no second turn.
+  Compare with <code>practice/0008-web-search.mjs</code>.
+  </p>
+
+  <h2>1. OpenAI client singleton</h2>
+
+  <p>
+    Create <code>lib/openai.ts</code> so every route imports the same client.
+    Next.js loads <code>.env.local</code> automatically — the key never reaches
+    the browser.
+  </p>
+
+  <pre class="example">// lib/openai.ts
+import OpenAI from "openai";
+
+export const openai = new OpenAI();</pre>
+
+  <h2>2. Route handler</h2>
+
+  <p>
+    App Router maps <code>app/api/research/route.ts</code> →
+    <code>POST /api/research</code>.
+    <a href="https://nextjs.org/docs/app/building-your-application/routing/route-handlers">Route Handlers docs</a>.
+  </p>
+
+  <pre class="example">// app/api/research/route.ts
+import { NextResponse } from "next/server";
+import { openai } from "@/lib/openai";
+
+type Citation = { title: string; url: string };
+
+export async function POST(req: Request) {
+  const body = await req.json();
+  const message = body?.message;
+
+  if (typeof message !== "string" || !message.trim()) {
+    return NextResponse.json(
+      { error: "message is required" },
+      { status: 400 }
+    );
+  }
+
+  const response = await openai.responses.create({
+    model: "gpt-5-mini",
+    instructions:
+      "You are a research assistant for solo builders. Answer clearly and concisely. Cite sources when you use web search.",
+    input: message.trim(),
+    tools: [{ type: "web_search", search_context_size: "low" }],
+  });
+
+  const outputMessage = response.output.find((item) => item.type === "message");
+  const annotations = outputMessage?.content?.[0]?.annotations ?? [];
+
+  const citations: Citation[] = annotations
+    .filter((note) => note.type === "url_citation")
+    .map((note) => ({
+      title: note.title ?? note.url,
+      url: note.url,
+    }));
+
+  return NextResponse.json({
+    answer: response.output_text,
+    citations,
+    searched: response.output.some((item) => item.type === "web_search_call"),
+  });
+}</pre>
+
+  <div class="callout">
+    <strong>Citations come from annotations, not the prose.</strong><br>
+    The model may hallucinate inline URLs. For UI links, use
+    <code>message.content[0].annotations</code> where
+    <code>type === "url_citation"</code> — same rule as
+    <code>practice/0008-web-search.mjs</code>.
+  </div>
+
+  <h2>3. Response shape</h2>
+
+  <pre class="example">{
+  "answer": "Next.js 15 introduced ...",
+  "citations": [
+    { "title": "Next.js 15 Blog", "url": "https://..." }
+  ],
+  "searched": true
+}</pre>
+
+  <p>
+    <code>searched</code> is a convenience flag — useful when the model answers
+    from training data without calling <code>web_search</code>.
+  </p>
+
+  <h2>4. Test with curl</h2>
+
+  <p>With <code>npm run dev</code> running:</p>
+
+  <pre class="example">curl -s http://localhost:3000/api/research \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What changed in Next.js 15 App Router? Two sentences."}' \
+  | jq</pre>
+
+  <p>Confirm:</p>
+  <ul>
+    <li><code>answer</code> is non-empty prose</li>
+    <li><code>citations</code> has at least one entry with a real URL</li>
+    <li><code>searched</code> is <code>true</code> for a current-events question</li>
+  </ul>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Built-in tools need no handler turn.","false":"Custom functions need your handler — web_search does not."}'>
+    <h3>1. How many OpenAI API calls for web_search?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">One — platform runs search internally</button>
+      <button data-correct="false">Two — handler plus function_call_output</button>
+      <button data-correct="false">Three — search then summarize then cite</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Annotations are the source of truth for links.","false":"Inline URLs in answer text can be wrong — use annotations."}'>
+    <h3>2. Where do citation URLs come from?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">Parsed from answer markdown links</button>
+      <button data-correct="true">url_citation entries in message annotations</button>
+      <button data-correct="false">web_search_call action query string</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. curl isolates the server contract first.","false":"Wire the UI first and you debug two layers at once."}'>
+    <h3>3. Why curl before enabling Send in the UI?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Isolate server logic from React state bugs</button>
+      <button data-correct="false">curl is required by Next.js route handlers</button>
+      <button data-correct="false">OpenAI only accepts server-side curl requests</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>30-minute win:</strong> <code>curl</code> returns answer + citations.</p>
+    <ol>
+      <li>Create <code>lib/openai.ts</code> — singleton client (see above)</li>
+      <li>Create <code>app/api/research/route.ts</code> — POST handler with <code>web_search</code></li>
+      <li>Run <code>npm run dev</code> in <code>research-assistant/</code></li>
+      <li><code>curl</code> a current-events question — inspect JSON with <code>jq</code></li>
+      <li>Try a timeless question (e.g. “What is HTTP?”) — note if <code>searched</code> is <code>false</code></li>
+      <li>Compare your route with <code>practice/0008-web-search.mjs</code> — same OpenAI call, different transport</li>
+      <li>Leave <code>app/page.tsx</code> unchanged — Send stays disabled until Lesson 27</li>
+    </ol>
+    <p>
+      <strong>Next lesson (27):</strong> stream the same research loop to the browser —
+      SSE UI phase snapshots, <code>fetch</code> reader, enable Send on the shell.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://nextjs.org/docs/app/building-your-application/routing/route-handlers">Next.js Route Handlers</a> ·
+    <a href="https://platform.openai.com/docs/guides/tools">Built-in tools (web search)</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0025-research-assistant-scaffold.html">Lesson 25 — Scaffold</a> ·
+      Reference: <a href="../reference/research-assistant.html">Research Assistant</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
