@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 19 — Ship the Triage API</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 19 · ~20 minutes</div>
+  <h1>Ship the Triage API</h1>
+
+  <p class="epigraph">
+    Terminal proved the loop.
+    Now a user sees it.
+  </p>
+
+  <p>
+    <a href="0015-capstone-feature-triage.html">Lesson 15</a> built the two-turn
+    flow. <a href="0016-streaming-ui-state-machine.html">Lesson 16</a> mapped it
+    to UI phases. <a href="0018-agents-sdk.html">Lesson 18</a> showed when the
+    SDK can run the loop for you. Your mission success criteria still need the
+    missing piece: a <strong>shipped feature</strong> — API key on the server,
+    streaming updates to a browser.
+  </p>
+
+  <h2>The server boundary</h2>
+
+  <p>
+    The browser never calls OpenAI directly. Your server owns:
+  </p>
+
+  <ol>
+    <li><code>OPENAI_API_KEY</code> (from <code>.env</code> on the server)</li>
+    <li>The two-turn capstone loop (stream tool → handler → stream card)</li>
+    <li>Mapping raw API events → compact <strong>UI state</strong> snapshots</li>
+  </ol>
+
+  <p>
+    See <a href="../reference/streaming-ui-state.html">streaming UI state reference</a>
+    and <a href="../reference/capstone-pattern.html">capstone pattern</a>.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Layer</th>
+        <th>This lesson</th>
+        <th>Your Next.js app</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Server</strong></td>
+        <td><code>practice/0019-ship-triage-api.mjs</code></td>
+        <td><code>app/api/triage/route.ts</code></td>
+      </tr>
+      <tr>
+        <td><strong>Transport</strong></td>
+        <td>SSE (<code>text/event-stream</code>)</td>
+        <td>SSE or fetch stream — same contract</td>
+      </tr>
+      <tr>
+        <td><strong>Client</strong></td>
+        <td><code>practice/fixtures/triage-demo.html</code></td>
+        <td>React <code>useReducer</code> + <code>TriageCard</code> component</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>What crosses the wire</h2>
+
+  <p>
+    Do <em>not</em> forward raw OpenAI stream events to the browser. The server
+    maps them to the same shape from Lesson 16:
+  </p>
+
+  <pre class="example">// Each SSE message — one UI snapshot
+{
+  "phase": "streaming-args",
+  "toolName": "get_feature_status",
+  "argsPreview": "{\"feature_slug\":\"dark-mode\"}",
+  "cardPreview": "",
+  "card": null,
+  "error": null
+}
+
+// Final message
+{
+  "phase": "done",
+  "card": {
+    "feature_title": "Dark mode",
+    "current_status": "planned",
+    "priority": "high",
+    "recommendation": "..."
+  }
+}</pre>
+
+  <p>
+  The client switches on <code>phase</code> — identical logic to
+  <code>practice/0016-ui-state-machine.mjs</code>, but rendered in HTML instead
+  of <code>[UI]</code> log lines.
+  </p>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">Browser                    Node server (this lesson)
+  │                              │
+  │── GET / ────────────────────►│ serve triage-demo.html
+  │── EventSource /api/triage ──►│ turn 1: responses.create (stream)
+  │◄── SSE: { phase, … } ────────│ map events → UI snapshots
+  │                              │ run get_feature_status handler
+  │                              │ turn 2: responses.stream + zodTextFormat
+  │◄── SSE: { phase: "done" } ───│ output_parsed → card
+  │                              │</pre>
+
+  <div class="callout">
+    <strong>Raw API vs Agents SDK</strong><br>
+    Use the hand-rolled two-turn loop here — you control every SSE snapshot for
+    the UI. Use the Agents SDK from
+    <a href="0018-agents-sdk.html">Lesson 18</a> for backend jobs where traces
+    matter more than per-event UI mapping.
+  </div>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. The server maps API events to UI snapshots.","false":"Raw OpenAI events stay on the server — send compact UI state over SSE."}'>
+    <h3>1. What does the browser receive over SSE?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">Raw OpenAI stream events</button>
+      <button data-correct="true">UI phase snapshots from your server</button>
+      <button data-correct="false">The OpenAI API key for follow-up calls</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Capstone turn 2 has no tools — model cannot re-call.","false":"Turn 2 omits tools so the model must emit the card."}'>
+    <h3>2. Why does turn 2 omit tools?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">OpenAI disallows tools with structured output</button>
+      <button data-correct="true">Forces structured card only — no redundant lookups</button>
+      <button data-correct="false">SSE cannot carry tool call events</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Typed fields render when phase is done.","false":"Wait for output_parsed — show preview or skeleton while streaming."}'>
+    <h3>3. When does the demo render typed card fields?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">On every cardPreview delta</button>
+      <button data-correct="true">When phase is done with a parsed card</button>
+      <button data-correct="false">As soon as the handler returns</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>20-minute win:</strong> run the capstone in a browser with live phase updates.</p>
+    <ol>
+      <li>Run: <code>node practice/0019-ship-triage-api.mjs</code></li>
+      <li>Open <code>http://localhost:3456</code></li>
+      <li>Click <strong>Ask about dark mode</strong> — watch phases: streaming-args → running-handler → streaming-card → done</li>
+      <li>Confirm typed card fields appear only at <code>done</code></li>
+      <li>Compare server code with <code>practice/0015-capstone-feature-triage.mjs</code> — same loop, plus SSE mapping</li>
+      <li>Optional: port the reducer to a Next.js API route using the <a href="https://github.com/openai/openai-responses-starter-app">Responses starter app</a> as a template</li>
+    </ol>
+    <p>
+      You have now hit all three mission primitives in one shipped-shaped flow:
+      <strong>streaming UI</strong>, <strong>tool calls</strong>, and
+      <strong>structured JSON output</strong>. Next: polish the UI, add auth, or
+      extend with file search from
+      <a href="0017-file-search.html">Lesson 17</a>.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://github.com/openai/openai-responses-starter-app">OpenAI Responses starter app</a>
+    (full Next.js streaming UI) ·
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0018-agents-sdk.html">Lesson 18 — Agents SDK</a> ·
+      Reference: <a href="../reference/streaming-ui-state.html">Streaming UI State</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
