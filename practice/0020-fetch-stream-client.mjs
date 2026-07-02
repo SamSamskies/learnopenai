@@ -12,15 +12,15 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3456;
 
-const demoHtml = fs.readFileSync(
-  path.join(__dirname, "fixtures/triage-demo.html"),
+const fetchDemoHtml = fs.readFileSync(
+  path.join(__dirname, "fixtures/triage-fetch-demo.html"),
   "utf8"
 );
 
 const server = http.createServer(async (req, res) => {
   if (req.url === "/" || req.url === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(demoHtml);
+    res.end(fetchDemoHtml);
     return;
   }
 
@@ -51,9 +51,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log("Feature Triage API — Lesson 19\n");
+  console.log("Fetch Stream Client — Lesson 20\n");
   console.log(`  Demo UI:  http://localhost:${PORT}`);
   console.log(`  SSE:      GET http://localhost:${PORT}/api/triage`);
-  console.log("\nOpen the demo UI, click Ask, watch phases update live.");
-  console.log("API key stays on the server — browser only sees UI state.\n");
+  console.log("\nSame server as Lesson 19 — client uses fetch + ReadableStream.");
+  console.log("Compare with practice/fixtures/triage-demo.html (EventSource).\n");
 });

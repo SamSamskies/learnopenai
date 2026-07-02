@@ -168,10 +168,11 @@ const { start } = useTriageStream(dispatch);
   <div class="practice">
     <p><strong>20-minute win:</strong> same triage flow, fetch client instead of EventSource.</p>
     <ol>
-      <li>Run: <code>node practice/0019-ship-triage-api.mjs</code></li>
-      <li>Open <code>http://localhost:3456/fetch.html</code> (fetch demo)</li>
-      <li>Click <strong>Ask about dark mode</strong> — phases should match <code>/</code> (EventSource demo)</li>
-      <li>Open <code>practice/fixtures/triage-fetch-demo.html</code> — find <code>readSseStream</code> and the buffer split on <code>\n\n</code></li>
+      <li>Run: <code>node practice/0020-fetch-stream-client.mjs</code></li>
+      <li>Open <code>http://localhost:3456</code></li>
+      <li>Click <strong>Ask about dark mode</strong> — watch phases update via fetch</li>
+      <li>Compare client code: <code>practice/fixtures/triage-fetch-demo.html</code> vs <code>triage-demo.html</code> (EventSource from <a href="0019-ship-triage-api.html">Lesson 19</a>)</li>
+      <li>Find <code>readSseStream</code> and the buffer split on <code>\n\n</code></li>
       <li>Read <a href="../reference/fetch-stream-client.html">fetch stream client reference</a> — sketch <code>useReducer</code> + <code>useTriageStream</code> for your Next app</li>
       <li>Optional: clone the <a href="https://github.com/openai/openai-responses-starter-app">Responses starter app</a> and compare its stream consumer to your parse loop</li>
     </ol>
