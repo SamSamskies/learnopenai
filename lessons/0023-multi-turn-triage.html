@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 23 — Multi-turn Triage</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 23 · ~20 minutes</div>
+  <h1>Multi-turn Triage</h1>
+
+  <p class="epigraph">
+    One-shot proved the feature.
+    Threads prove the product.
+  </p>
+
+  <p>
+    <a href="0022-production-hardening.html">Lesson 22</a> hardened the route.
+    <a href="0010-state-across-tool-turns.html">Lesson 10</a> taught
+    <code>previous_response_id</code> in a CLI script. Now wire both into the
+    capstone: a user asks about dark mode, follows up about SSO, then compares
+    priorities — <strong>without starting a new thread each time</strong>.
+  </p>
+
+  <h2>What the server remembers</h2>
+
+  <p>
+    OpenAI stores each response when <code>store: true</code>. Your server stores
+    one id per chat session — the <strong>final</strong> response id from the
+    previous user message (<a href="../reference/conversation-state.html">conversation state reference</a>).
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Path</th>
+        <th>Responses in one user message</th>
+        <th>Save this id</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Backlog (custom tool)</td>
+        <td>Turn 1: <code>function_call</code> · Turn 2: structured card</td>
+        <td><strong>Turn 2</strong> <code>response.id</code></td>
+      </tr>
+      <tr>
+        <td>Docs (<code>file_search</code>)</td>
+        <td>Single response with answer + citations</td>
+        <td>That response's <code>id</code></td>
+      </tr>
+      <tr>
+        <td>Direct (no tool)</td>
+        <td>Model answers from prior context</td>
+        <td>That response's <code>id</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">// Per session on your server:
+sessions.set(sessionId, lastResponseId);
+
+// Each POST /api/triage:
+await streamTriageDocs(onSnapshot, message, vectorStoreId, {
+  previousResponseId: sessions.get(sessionId),
+});
+// → return lastResponseId from final response.completed / turn 2</pre>
+
+  <div class="callout warn">
+    <strong>Resend every turn</strong><br>
+    <code>instructions</code> and <code>tools</code> do not carry over the chain.
+    The library still sends them on turn 1; your route must keep doing so.
+    Only the <em>user message</em> and <code>previous_response_id</code> are new each turn.
+  </div>
+
+  <h2>Session boundary</h2>
+
+  <p>
+    A <strong>session</strong> is your product's chat thread — not OpenAI's
+    Conversations API (that comes later for cross-device persistence). For this
+    lesson:
+  </p>
+
+  <ul>
+    <li>Client generates a <code>sessionId</code> (UUID in <code>sessionStorage</code>)</li>
+    <li>Server maps <code>sessionId → lastResponseId</code> in memory</li>
+    <li><strong>New chat</strong> clears the map entry and issues a fresh UUID</li>
+  </ul>
+
+  <p>
+    In production you persist <code>lastResponseId</code> in your DB next to the
+  thread row — same pattern, durable storage.
+  </p>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">Browser                     POST /api/triage
+  │  { message, sessionId }         │
+  │────────────────────────────────►│ auth → rate limit
+  │                                 │ lastId = sessions.get(sessionId)
+  │                                 │ streamTriageDocs(…, { previousResponseId: lastId })
+  │                                 │ sessions.set(sessionId, lastResponseId)
+  │◄── SSE snapshots ───────────────│
+  │  final frame includes responseId │</pre>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Turn 2 has tool output and the card — chain there.","false":"Turn 1 only has the function_call — chaining drops the tool result."}'>
+    <h3>1. After backlog tool loop, save which id?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">The second response id</button>
+      <button data-correct="false">The first response id</button>
+      <button data-correct="false">The current session id</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Only the new user message chains forward.","false":"Prior messages must be resent in input — server replays them."}'>
+    <h3>2. What does previous_response_id replace?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Resending the full prior transcript</button>
+      <button data-correct="false">The need for store true</button>
+      <button data-correct="false">Declaring tools on each turn</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. New sessionId means no previous_response_id.","false":"Clearing UI alone resets OpenAI state."}'>
+    <h3>3. What does New chat do?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Clears server lastResponseId for session</button>
+      <button data-correct="false">Deletes the vector store files</button>
+      <button data-correct="false">Revokes the app Bearer token</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>20-minute win:</strong> three messages, one thread, guarded route.</p>
+    <ol>
+      <li>Run: <code>node practice/0023-triage-conversation.mjs</code></li>
+      <li>Open <code>http://localhost:3456</code></li>
+      <li>Click <strong>Starter: dark mode</strong> — watch backlog path + <code>responseId</code></li>
+      <li>Type: <em>What about SSO — is that shipped yet?</em> — new tool call, same session</li>
+      <li>Type: <em>Between dark mode and SSO, which has higher priority?</em> — often no new tool call (recall)</li>
+      <li>Click <strong>New chat</strong> — send the comparison again; context should be gone</li>
+      <li>Read <code>practice/lib/stream-triage-docs.mjs</code> — find <code>store: true</code> and the turn-2 id return</li>
+      <li>Compare <code>0023-triage-conversation.mjs</code> vs <code>0022-production-hardening.mjs</code> — POST body + session map</li>
+    </ol>
+    <p>
+      Your capstone is now a conversational assistant. Next:
+      <strong>cross-provider comparison</strong> — how Responses API primitives
+      map to Anthropic Messages and Gemini (mission success criterion #4).
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/conversation-state">Conversation state guide</a>
+    and
+    <a href="https://platform.openai.com/docs/guides/function-calling">Function calling — multi-turn section</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0022-production-hardening.html">Lesson 22 — Production Hardening</a> ·
+      Reference: <a href="../reference/conversation-state.html">Conversation State</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

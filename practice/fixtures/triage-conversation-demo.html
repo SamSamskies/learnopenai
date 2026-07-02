@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feature Triage — Multi-turn Demo</title>
+  <style>
+    :root {
+      --text: #1a1a1a;
+      --muted: #555;
+      --accent: #10a37f;
+      --border: #ddd;
+      --bg: #fafafa;
+      --card: #fff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    input[type="password"], textarea {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+    input[type="password"] { margin-bottom: 1rem; }
+    textarea { min-height: 72px; resize: vertical; margin-bottom: 0.5rem; }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.55rem 1rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .thread {
+      margin-top: 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      min-height: 160px;
+      max-height: 360px;
+      overflow-y: auto;
+    }
+    .msg { margin-bottom: 0.85rem; }
+    .msg-role {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    .msg.user .msg-body { font-weight: 500; }
+    .msg.assistant .msg-body { color: var(--text); }
+    .phase-badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    pre {
+      font-size: 0.8rem;
+      background: #f4f4f4;
+      padding: 0.65rem;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .card-fields dt { font-size: 0.72rem; color: var(--muted); margin-top: 0.5rem; }
+    .card-fields dd { font-weight: 500; }
+    .citations { margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+    .citations li { margin-top: 0.2rem; }
+    .error { color: #991b1b; }
+    .hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.75rem;
+    }
+    code { font-size: 0.85em; }
+  </style>
+</head>
+<body>
+  <h1>Feature Triage (Multi-turn)</h1>
+  <p class="subtitle">Same hardened route — server chains <code>previous_response_id</code> per session.</p>
+
+  <label for="token">API token (Bearer)</label>
+  <input id="token" type="password" placeholder="dev-secret" autocomplete="off" />
+
+  <div class="actions">
+    <button id="starter1" type="button">Starter: dark mode</button>
+    <button id="starter2" type="button" class="secondary">Starter: roadmap doc</button>
+    <button id="newChat" type="button" class="secondary">New chat</button>
+  </div>
+
+  <div class="thread" id="thread">
+    <p class="hint" style="margin:0">Send a message — follow up without re-explaining context.</p>
+  </div>
+
+  <label for="input" style="margin-top:1rem">Your message</label>
+  <textarea id="input" placeholder="What about SSO — is that shipped yet?"></textarea>
+  <div class="actions">
+    <button id="send" type="button">Send</button>
+  </div>
+  <p class="hint">Session: <code id="sessionLabel">…</code> · Last <code>responseId</code>: <code id="responseLabel">—</code></p>
+
+  <script>
+    const tokenInput = document.getElementById("token");
+    const threadEl = document.getElementById("thread");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const starter1Btn = document.getElementById("starter1");
+    const starter2Btn = document.getElementById("starter2");
+    const newChatBtn = document.getElementById("newChat");
+    const sessionLabel = document.getElementById("sessionLabel");
+    const responseLabel = document.getElementById("responseLabel");
+
+    let sessionId = sessionStorage.getItem("triageSessionId") ?? crypto.randomUUID();
+    let abortController = null;
+    let busy = false;
+
+    sessionLabel.textContent = sessionId.slice(0, 8) + "…";
+    const saved = localStorage.getItem("triageToken");
+    tokenInput.value = saved ?? "dev-secret";
+    tokenInput.addEventListener("change", () => {
+      localStorage.setItem("triageToken", tokenInput.value);
+    });
+
+    function setBusy(next) {
+      busy = next;
+      sendBtn.disabled = next;
+      starter1Btn.disabled = next;
+      starter2Btn.disabled = next;
+      newChatBtn.disabled = next;
+    }
+
+    function appendUser(text) {
+      const el = document.createElement("div");
+      el.className = "msg user";
+      el.innerHTML = `<div class="msg-role">You</div><div class="msg-body"></div>`;
+      el.querySelector(".msg-body").textContent = text;
+      threadEl.appendChild(el);
+      threadEl.scrollTop = threadEl.scrollHeight;
+      return el;
+    }
+
+    function appendAssistantShell() {
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.innerHTML = `
+        <div class="msg-role">Assistant</div>
+        <div class="phase-badge">routing</div>
+        <div class="msg-body"><em>Thinking…</em></div>`;
+      threadEl.appendChild(el);
+      threadEl.scrollTop = threadEl.scrollHeight;
+      return el;
+    }
+
+    function renderAssistant(el, state) {
+      const badge = el.querySelector(".phase-badge");
+      const body = el.querySelector(".msg-body");
+      const pathLabel = state.path ? ` · ${state.path}` : "";
+      badge.textContent = state.phase + pathLabel;
+
+      if (state.error) {
+        body.innerHTML = `<p class="error">${state.error}</p>`;
+        return;
+      }
+
+      if (state.phase === "routing") {
+        body.innerHTML = "<p>Choosing tool…</p>";
+        return;
+      }
+
+      if (state.path === "backlog" && state.phase === "streaming-args") {
+        body.innerHTML =
+          `<p>Calling <strong>${state.toolName}</strong>…</p>` +
+          `<pre>${state.argsPreview || "…"}</pre>`;
+        return;
+      }
+
+      if (state.path === "backlog" && state.phase === "running-handler") {
+        body.innerHTML = "<p>Looking up live backlog…</p>";
+        return;
+      }
+
+      if (state.path === "backlog" && state.phase === "streaming-card") {
+        body.innerHTML =
+          "<p>Streaming triage card…</p>" +
+          `<pre>${state.cardPreview || "…"}</pre>`;
+        return;
+      }
+
+      if (state.path === "backlog" && state.phase === "done" && state.card) {
+        const c = state.card;
+        body.innerHTML = `
+          <dl class="card-fields">
+            <dt>Feature</dt><dd>${c.feature_title}</dd>
+            <dt>Status</dt><dd>${c.current_status}</dd>
+            <dt>Priority</dt><dd>${c.priority}</dd>
+            <dt>Recommendation</dt><dd>${c.recommendation}</dd>
+          </dl>`;
+        return;
+      }
+
+      if (state.path === "docs" && state.phase === "searching-docs") {
+        const queries = state.searchQueries?.length
+          ? `<pre>${state.searchQueries.join("\n")}</pre>`
+          : "";
+        body.innerHTML = "<p>Searching uploaded documents…</p>" + queries;
+        return;
+      }
+
+      if (
+        (state.path === "docs" || !state.path) &&
+        (state.phase === "streaming-answer" || state.phase === "done")
+      ) {
+        const cites = (state.citations ?? [])
+          .map((c) => `<li>${c.filename}</li>`)
+          .join("");
+        const text = state.answer ?? state.answerPreview ?? "…";
+        body.innerHTML = `
+          <p>${text}</p>
+          ${cites ? `<ul class="citations"><li><strong>Sources</strong></li>${cites}</ul>` : ""}`;
+        return;
+      }
+
+      body.innerHTML = "<em>Waiting…</em>";
+    }
+
+    async function readSseStream(response, onSnapshot) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+
+        for (const chunk of chunks) {
+          const line = chunk.trim();
+          if (!line.startsWith("data: ")) continue;
+          onSnapshot(JSON.parse(line.slice(6)));
+        }
+      }
+    }
+
+    async function sendMessage(text) {
+      const message = text.trim();
+      if (!message || busy) return;
+
+      abortController?.abort();
+      abortController = new AbortController();
+      setBusy(true);
+      appendUser(message);
+      inputEl.value = "";
+      const assistantEl = appendAssistantShell();
+
+      try {
+        const response = await fetch("/api/triage", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${tokenInput.value}`,
+          },
+          body: JSON.stringify({ message, sessionId }),
+          signal: abortController.signal,
+        });
+
+        const contentType = response.headers.get("content-type") ?? "";
+
+        if (!response.ok) {
+          const body = contentType.includes("application/json")
+            ? await response.json()
+            : { error: `HTTP ${response.status}` };
+          renderAssistant(assistantEl, {
+            phase: "error",
+            error: `HTTP ${response.status}: ${body.error ?? "Request failed"}`,
+          });
+          return;
+        }
+
+        await readSseStream(response, (state) => {
+          renderAssistant(assistantEl, state);
+          if (state.responseId) {
+            responseLabel.textContent = state.responseId.slice(0, 12) + "…";
+          }
+        });
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        renderAssistant(assistantEl, {
+          phase: "error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function newChat() {
+      abortController?.abort();
+      try {
+        await fetch(`/api/session?id=${encodeURIComponent(sessionId)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${tokenInput.value}` },
+        });
+      } catch {
+        // demo — ignore
+      }
+      sessionId = crypto.randomUUID();
+      sessionStorage.setItem("triageSessionId", sessionId);
+      sessionLabel.textContent = sessionId.slice(0, 8) + "…";
+      responseLabel.textContent = "—";
+      threadEl.innerHTML =
+        '<p class="hint" style="margin:0">New thread — no previous_response_id.</p>';
+    }
+
+    sendBtn.addEventListener("click", () => sendMessage(inputEl.value));
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage(inputEl.value);
+      }
+    });
+    starter1Btn.addEventListener("click", () =>
+      sendMessage(
+        "Users keep asking for dark mode. Is it on our roadmap, and what's its priority?"
+      )
+    );
+    starter2Btn.addEventListener("click", () =>
+      sendMessage(
+        "According to our internal roadmap doc, what is the status and priority of dark mode? Cite the source file."
+      )
+    );
+    newChatBtn.addEventListener("click", () => newChat());
+  </script>
+</body>
+</html>

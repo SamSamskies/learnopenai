@@ -48,6 +48,7 @@ export function createUiState(overrides = {}) {
     answerPreview: "",
     answer: null,
     citations: [],
+    responseId: null,
     error: null,
     ...overrides,
   };
@@ -109,6 +110,7 @@ async function runBacklogTurn2(state, responseId, callId, onSnapshot) {
       },
     ],
     text: { format: zodTextFormat(TriageCard, "triage_card") },
+    store: true,
   });
 
   for await (const event of turn2) {
@@ -120,11 +122,18 @@ async function runBacklogTurn2(state, responseId, callId, onSnapshot) {
 
   const response = await turn2.finalResponse();
   state.card = response.output_parsed;
+  state.responseId = response.id;
   state.phase = "done";
   onSnapshot({ ...state });
+  return response.id;
 }
 
-export async function streamTriageDocs(onSnapshot, userQuestion, vectorStoreId) {
+export async function streamTriageDocs(
+  onSnapshot,
+  userQuestion,
+  vectorStoreId,
+  { previousResponseId } = {}
+) {
   const state = createUiState({ phase: "routing", path: null });
   onSnapshot(state);
 
@@ -140,6 +149,8 @@ export async function streamTriageDocs(onSnapshot, userQuestion, vectorStoreId) 
     tools: buildTools(vectorStoreId),
     parallel_tool_calls: false,
     stream: true,
+    store: true,
+    ...(previousResponseId && { previous_response_id: previousResponseId }),
   });
 
   for await (const event of turn1) {
@@ -177,7 +188,10 @@ export async function streamTriageDocs(onSnapshot, userQuestion, vectorStoreId) 
       onSnapshot({ ...state });
     }
 
-    if (path === "docs" && event.type === "response.output_text.delta") {
+    if (
+      (path === "docs" || !path) &&
+      event.type === "response.output_text.delta"
+    ) {
       state.phase = "streaming-answer";
       state.answerPreview += event.delta;
       onSnapshot({ ...state });
@@ -193,9 +207,18 @@ export async function streamTriageDocs(onSnapshot, userQuestion, vectorStoreId) 
         state.searchQueries = search?.queries ?? [];
         state.answer = event.response.output_text;
         state.citations = extractFileCitations(event.response);
+        state.responseId = responseId;
         state.phase = "done";
         onSnapshot({ ...state });
-        return;
+        return { lastResponseId: responseId };
+      }
+
+      if (!path && event.response.output_text) {
+        state.answer = event.response.output_text;
+        state.responseId = responseId;
+        state.phase = "done";
+        onSnapshot({ ...state });
+        return { lastResponseId: responseId };
       }
     }
   }
@@ -205,10 +228,15 @@ export async function streamTriageDocs(onSnapshot, userQuestion, vectorStoreId) 
       onSnapshot(
         createUiState({ phase: "error", error: "No tool call in turn 1." })
       );
-      return;
+      return { lastResponseId: null };
     }
-    await runBacklogTurn2(state, responseId, callId, onSnapshot);
-    return;
+    const lastResponseId = await runBacklogTurn2(
+      state,
+      responseId,
+      callId,
+      onSnapshot
+    );
+    return { lastResponseId };
   }
 
   onSnapshot(
@@ -217,4 +245,5 @@ export async function streamTriageDocs(onSnapshot, userQuestion, vectorStoreId) 
       error: "Model did not call get_feature_status or file_search.",
     })
   );
+  return { lastResponseId: null };
 }
