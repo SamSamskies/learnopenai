@@ -1,25 +1,30 @@
 import "dotenv/config";
 import OpenAI from "openai";
 
-const client = new OpenAI();
+// Remote MCP can take 15–60s: OpenAI lists tools from the server, may call one, then answers.
+// dmcp-server.deno.dev (dice demo in older docs) is often slow or unresponsive — use DeepWiki.
+const client = new OpenAI({ timeout: 120_000 });
 
-// Public demo server from OpenAI's remote MCP docs — no auth required.
-const DMCP = {
+const MCP = {
   type: "mcp",
-  server_label: "dmcp",
-  server_description: "Dungeons & Dragons dice rolling MCP server.",
-  server_url: "https://dmcp-server.deno.dev/sse",
-  require_approval: "never",
+  server_label: "deepwiki",
+  server_description: "MCP spec documentation via DeepWiki.",
+  server_url: "https://mcp.deepwiki.com/mcp",
+  require_approval: {
+    never: { tool_names: ["ask_question", "read_wiki_structure"] },
+  },
 };
 
-const PROMPT = "Roll 2d4+1 and reply with just the total number.";
+const PROMPT =
+  "What transport protocols does the MCP spec support? One short sentence.";
 
 console.log("Step 1 — declare remote MCP in tools (one request)");
-console.log("  server:", DMCP.server_url);
+console.log("  server:", MCP.server_url);
+console.log("  waiting — OpenAI fetches tools from the server, then may call one…");
 
 const response = await client.responses.create({
   model: "gpt-5",
-  tools: [DMCP],
+  tools: [MCP],
   input: PROMPT,
 });
 

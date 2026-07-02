@@ -73,19 +73,22 @@
   model: "gpt-5",
   tools: [{
     type: "mcp",
-    server_label: "dmcp",
-    server_description: "D&D dice rolling MCP server.",
-    server_url: "https://dmcp-server.deno.dev/sse",
-    require_approval: "never",
+    server_label: "deepwiki",
+    server_description: "MCP spec docs via DeepWiki.",
+    server_url: "https://mcp.deepwiki.com/mcp",
+    require_approval: {
+      never: { tool_names: ["ask_question", "read_wiki_structure"] },
+    },
   }],
-  input: "Roll 2d4+1",
+  input: "What transport protocols does the MCP spec support?",
 });
 
 console.log(response.output_text);</pre>
 
   <p>
-    The docs use this demo server — no API key on the MCP side. Real servers
-    often need <code>authorization</code> (OAuth bearer token).
+  The practice script uses DeepWiki (reliable, no auth). Older docs also show a
+  dice demo at <code>dmcp-server.deno.dev</code> — it is often slow or down.
+  Real servers often need <code>authorization</code> (OAuth bearer token).
   </p>
 
   <h2>What appears in <code>output</code></h2>
@@ -200,10 +203,10 @@ console.log(response.output_text);</pre>
   <h2>Do this now</h2>
 
   <div class="practice">
-    <p><strong>10-minute win:</strong> one request, external dice server, inspect MCP output items.</p>
+    <p><strong>10-minute win:</strong> one request, external DeepWiki server, inspect MCP output items.</p>
     <ol>
-      <li>Run: <code>node practice/0014-remote-mcp.mjs</code></li>
-      <li>Confirm <code>mcp_list_tools</code> lists the <code>roll</code> tool</li>
+      <li>Run: <code>node practice/0014-remote-mcp.mjs</code> (expect 15–60s before Step 2)</li>
+      <li>Confirm <code>mcp_list_tools</code> lists tools like <code>ask_question</code></li>
       <li>Read <code>mcp_call</code> — arguments sent and raw output returned</li>
       <li>Compare with Lesson 7: no handler code, no second <code>create</code></li>
       <li>Ask yourself: which tool in your product could be MCP vs custom?</li>

@@ -75,10 +75,12 @@
 
   <pre class="example">tools: [{
   type: "mcp",
-  server_label: "dmcp",
-  server_description: "Dice rolling demo server.",
-  server_url: "https://dmcp-server.deno.dev/sse",
-  require_approval: "never",
+  server_label: "deepwiki",
+  server_description: "MCP spec docs via DeepWiki.",
+  server_url: "https://mcp.deepwiki.com/mcp",
+  require_approval: {
+    never: { tool_names: ["ask_question", "read_wiki_structure"] },
+  },
 }]
 // OAuth servers: add authorization: `Bearer ${token}`</pre>
 
