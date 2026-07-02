@@ -8,21 +8,6 @@ const client = new OpenAI();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(__dirname, "fixtures", "product-roadmap.md");
 
-async function waitForVectorStoreFile(vectorStoreId, fileId) {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    const listed = await client.vectorStores.files.list({
-      vector_store_id: vectorStoreId,
-    });
-    const entry = listed.data.find((f) => f.id === fileId);
-    if (entry?.status === "completed") return;
-    if (entry?.status === "failed") {
-      throw new Error(`Vector store indexing failed for ${fileId}`);
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error("Timed out waiting for file to index in vector store");
-}
-
 async function ensureVectorStore() {
   const existing = process.env.FILE_SEARCH_VECTOR_STORE_ID;
   if (existing) {
@@ -41,11 +26,13 @@ async function ensureVectorStore() {
     name: "learnopenai-product-roadmap",
   });
 
-  await client.vectorStores.files.create(vectorStore.id, {
-    file_id: uploaded.id,
-  });
-
-  await waitForVectorStoreFile(vectorStore.id, uploaded.id);
+  const indexed = await client.vectorStores.files.createAndPoll(
+    vectorStore.id,
+    { file_id: uploaded.id }
+  );
+  if (indexed.status === "failed") {
+    throw new Error(`Vector store indexing failed for ${uploaded.id}`);
+  }
 
   console.log("Setup complete. Add to .env to skip setup on reruns:");
   console.log(`FILE_SEARCH_VECTOR_STORE_ID=${vectorStore.id}\n`);
