@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feature Triage — Fetch Stream Demo</title>
+  <style>
+    :root {
+      --text: #1a1a1a;
+      --muted: #555;
+      --accent: #10a37f;
+      --border: #ddd;
+      --bg: #fafafa;
+      --card: #fff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.55rem 1rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .panel {
+      margin-top: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      min-height: 120px;
+    }
+    .phase {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    pre {
+      font-size: 0.8rem;
+      background: #f4f4f4;
+      padding: 0.65rem;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .card-fields dt { font-size: 0.72rem; color: var(--muted); margin-top: 0.5rem; }
+    .card-fields dd { font-weight: 500; }
+    .error { color: #991b1b; }
+  </style>
+</head>
+<body>
+  <h1>Feature Triage</h1>
+  <p class="subtitle">fetch + ReadableStream — same phases, React-ready client.</p>
+  <button id="ask" type="button">Ask about dark mode</button>
+  <div class="panel" id="panel">
+    <div class="phase" id="phase">idle</div>
+    <div id="content"><em>Click to start the capstone flow.</em></div>
+  </div>
+  <script>
+    const askBtn = document.getElementById("ask");
+    const phaseEl = document.getElementById("phase");
+    const contentEl = document.getElementById("content");
+    let abortController = null;
+
+    function render(state) {
+      phaseEl.textContent = state.phase;
+      if (state.error) {
+        contentEl.innerHTML = `<p class="error">${state.error}</p>`;
+        return;
+      }
+      if (state.phase === "streaming-args") {
+        contentEl.innerHTML =
+          `<p>Calling <strong>${state.toolName}</strong>…</p>` +
+          `<pre>${state.argsPreview || "…"}</pre>`;
+        return;
+      }
+      if (state.phase === "running-handler") {
+        contentEl.innerHTML = "<p>Looking up backlog…</p>";
+        return;
+      }
+      if (state.phase === "streaming-card") {
+        contentEl.innerHTML =
+          "<p>Streaming triage card…</p>" +
+          `<pre>${state.cardPreview || "…"}</pre>`;
+        return;
+      }
+      if (state.phase === "done" && state.card) {
+        const c = state.card;
+        contentEl.innerHTML = `
+          <dl class="card-fields">
+            <dt>Feature</dt><dd>${c.feature_title}</dd>
+            <dt>Status</dt><dd>${c.current_status}</dd>
+            <dt>Priority</dt><dd>${c.priority}</dd>
+            <dt>Recommendation</dt><dd>${c.recommendation}</dd>
+          </dl>`;
+        return;
+      }
+      contentEl.innerHTML = "<em>Waiting…</em>";
+    }
+
+    async function readSseStream(response, onSnapshot) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+
+        for (const chunk of chunks) {
+          const line = chunk.trim();
+          if (!line.startsWith("data: ")) continue;
+          onSnapshot(JSON.parse(line.slice(6)));
+        }
+      }
+    }
+
+    askBtn.addEventListener("click", async () => {
+      abortController?.abort();
+      abortController = new AbortController();
+      askBtn.disabled = true;
+      render({ phase: "idle" });
+
+      try {
+        const response = await fetch("/api/triage", {
+          method: "GET",
+          signal: abortController.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        await readSseStream(response, (state) => {
+          render(state);
+          if (state.phase === "done" || state.phase === "error") {
+            askBtn.disabled = false;
+          }
+        });
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        render({
+          phase: "error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+        askBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

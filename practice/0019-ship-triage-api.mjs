@@ -153,8 +153,13 @@ async function streamTriage(res) {
   sendUi(res, { ...state });
 }
 
+const fixturesDir = path.join(__dirname, "fixtures");
 const demoHtml = fs.readFileSync(
-  path.join(__dirname, "fixtures/triage-demo.html"),
+  path.join(fixturesDir, "triage-demo.html"),
+  "utf8"
+);
+const fetchDemoHtml = fs.readFileSync(
+  path.join(fixturesDir, "triage-fetch-demo.html"),
   "utf8"
 );
 
@@ -162,6 +167,12 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/" || req.url === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(demoHtml);
+    return;
+  }
+
+  if (req.url === "/fetch.html") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(fetchDemoHtml);
     return;
   }
 
@@ -193,6 +204,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log("Feature Triage API — Lesson 19\n");
   console.log(`  Demo UI:  http://localhost:${PORT}`);
+  console.log(`  Fetch UI: http://localhost:${PORT}/fetch.html`);
   console.log(`  SSE:      GET http://localhost:${PORT}/api/triage`);
   console.log("\nOpen the demo UI, click Ask, watch phases update live.");
   console.log("API key stays on the server — browser only sees UI state.\n");

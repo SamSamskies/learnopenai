@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fetch Stream Client — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Fetch Stream Client</h1>
+  <p class="subtitle">Read SSE-shaped responses with <code>fetch</code> — the React/Next.js default.</p>
+
+  <h2>EventSource vs fetch</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Need</th>
+        <th>EventSource</th>
+        <th>fetch + reader</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>POST body (user question)</td>
+        <td>No</td>
+        <td>Yes</td>
+      </tr>
+      <tr>
+        <td>Auth headers</td>
+        <td>No</td>
+        <td>Yes</td>
+      </tr>
+      <tr>
+        <td>Abort in-flight</td>
+        <td><code>close()</code></td>
+        <td><code>AbortController</code></td>
+      </tr>
+      <tr>
+        <td>React cleanup</td>
+        <td><code>useEffect</code> return</td>
+        <td>Same + abort on unmount</td>
+      </tr>
+      <tr>
+        <td>Wire format</td>
+        <td colspan="2"><code>data: {json}\n\n</code> — identical</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Parse loop</h2>
+  <pre class="example">const res = await fetch("/api/triage", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ question }),
+  signal: abortController.signal,
+});
+const reader = res.body.getReader();
+const decoder = new TextDecoder();
+let buffer = "";
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  buffer += decoder.decode(value, { stream: true });
+  const chunks = buffer.split("\n\n");
+  buffer = chunks.pop() ?? "";
+  for (const chunk of chunks) {
+    const line = chunk.trim();
+    if (!line.startsWith("data: ")) continue;
+    const state = JSON.parse(line.slice(6));
+    dispatch(state); // merge into useReducer state
+  }
+}</pre>
+
+  <h2>React shape</h2>
+  <pre class="example">// Client reducer is dumb — server owns the loop
+function reducer(state, patch) {
+  return { ...state, ...patch };
+}
+
+const [state, dispatch] = useReducer(reducer, initialTriageState);
+// dispatch each SSE snapshot as it arrives</pre>
+
+  <p>
+    Server still maps OpenAI events → UI phases. See
+    <a href="streaming-ui-state.html">streaming UI state</a> and
+    <a href="../lessons/0019-ship-triage-api.html">Lesson 19</a>.
+  </p>
+
+  <h2>Next.js route (sketch)</h2>
+  <pre class="example">// app/api/triage/route.ts
+export const runtime = "nodejs";
+
+export async function POST(req: Request) {
+  const stream = new ReadableStream({ async start(controller) {
+    const send = (state) =>
+      controller.enqueue(
+        new TextEncoder().encode(`data: ${JSON.stringify(state)}\n\n`)
+      );
+    await streamTriage(question, send);
+    controller.close();
+  }});
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}</pre>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0020-fetch-stream-client.html">Lesson 20</a> ·
+      Practice: <code>practice/fixtures/triage-fetch-demo.html</code> ·
+      <a href="https://github.com/openai/openai-responses-starter-app">Responses starter app</a>
+    </p>
+  </footer>
+</body>
+</html>

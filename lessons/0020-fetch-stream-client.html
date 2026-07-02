@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 20 — Fetch Stream Client</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 20 · ~20 minutes</div>
+  <h1>Fetch Stream Client</h1>
+
+  <p class="epigraph">
+    Same SSE on the wire.
+    A client React can own.
+  </p>
+
+  <p>
+    <a href="0019-ship-triage-api.html">Lesson 19</a> proved the server boundary
+    with <code>EventSource</code>. That works for demos. In a Next.js app you
+    usually switch to <strong><code>fetch</code> + a stream reader</strong> —
+    same <code>data: {json}\n\n</code> format, but POST bodies, auth headers,
+    and <code>AbortController</code> for React lifecycle.
+  </p>
+
+  <h2>Why not EventSource in production?</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Need</th>
+        <th>EventSource</th>
+        <th>fetch stream</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Send the user's question in the body</td>
+        <td>GET only</td>
+        <td>POST with JSON body</td>
+      </tr>
+      <tr>
+        <td>Attach session / auth headers</td>
+        <td>Not supported</td>
+        <td>Standard <code>headers</code></td>
+      </tr>
+      <tr>
+        <td>Cancel when user clicks again</td>
+        <td><code>source.close()</code></td>
+        <td><code>abortController.abort()</code></td>
+      </tr>
+      <tr>
+        <td>Wire format from Lesson 19</td>
+        <td colspan="2">Identical — UI snapshots, not raw OpenAI events</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    See <a href="../reference/fetch-stream-client.html">fetch stream client reference</a>
+    and <a href="../reference/streaming-ui-state.html">streaming UI state</a>.
+  </p>
+
+  <h2>The parse loop</h2>
+
+  <p>
+    Chunks can split mid-line. Buffer until you see a full
+    <code>\n\n</code> frame, then parse each <code>data:</code> line:
+  </p>
+
+  <pre class="example">const reader = res.body.getReader();
+const decoder = new TextDecoder();
+let buffer = "";
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  buffer += decoder.decode(value, { stream: true });
+  const frames = buffer.split("\n\n");
+  buffer = frames.pop() ?? "";
+  for (const frame of frames) {
+    const line = frame.trim();
+    if (!line.startsWith("data: ")) continue;
+    const state = JSON.parse(line.slice(6));
+    dispatch(state);  // useReducer in React
+  }
+}</pre>
+
+  <h2>React mapping</h2>
+
+  <p>
+    The server still runs the two-turn loop from
+    <a href="0015-capstone-feature-triage.html">Lesson 15</a>. The client
+    reducer stays <em>dumb</em> — it merges snapshots, it does not interpret
+    OpenAI events:
+  </p>
+
+  <pre class="example">// components/TriagePanel.tsx (sketch)
+const [state, dispatch] = useReducer(
+  (s, patch) => ({ ...s, ...patch }),
+  initialTriageState
+);
+
+// Hook wraps fetch + parse loop; calls dispatch(snapshot) per frame
+const { start } = useTriageStream(dispatch);
+
+// Render: switch on state.phase — same branches as triage-demo.html</pre>
+
+  <p>
+    In Next.js, the route handler returns the same stream
+    <a href="0019-ship-triage-api.html">Lesson 19</a> wrote by hand — wrapped
+    in <code>new Response(stream, { headers: { "Content-Type": "text/event-stream" } })</code>.
+    Set <code>export const runtime = "nodejs"</code> — the OpenAI SDK needs Node,
+    not Edge.
+  </p>
+
+  <div class="callout">
+    <strong>Vercel AI SDK</strong><br>
+    Many Next.js apps use the <code>ai</code> package (<code>useChat</code>,
+    <code>streamText</code>) instead of hand-rolling this loop. Same idea:
+    server streams, client consumes. Learn the raw pattern first — then you'll
+    know what the library abstracts.
+  </div>
+
+  <h2>Architecture (unchanged server, new client)</h2>
+
+  <pre class="example">React client                  Next.js route
+  │                                  │
+  │── fetch POST /api/triage ───────►│ streamTriage() — same as 0019
+  │◄── chunks: data: { phase } ──────│ map events → UI snapshots
+  │    dispatch(snapshot)            │
+  │    render on phase               │</pre>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. GET-only is fine for demos; POST is what real chat UIs need.","false":"EventSource is GET-only — use fetch when you need a request body."}'>
+    <h3>1. Why switch from EventSource to fetch?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">EventSource only supports GET requests</button>
+      <button data-correct="false">Fetch streams lack browser support today</button>
+      <button data-correct="false">SSE requires WebSockets in production apps</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Server maps OpenAI events; client merges snapshots.","false":"Raw OpenAI events stay on the server — the client only sees UI state."}'>
+    <h3>2. What does dispatch receive in React?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">Raw OpenAI stream events from the API</button>
+      <button data-correct="true">UI phase snapshots from your server route</button>
+      <button data-correct="false">The OpenAI API key for follow-up calls</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Abort prevents stale snapshots from an old run.","false":"Abort when the user starts a new request — not at done."}'>
+    <h3>3. When should you call abortController.abort()?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">When the user starts a new request</button>
+      <button data-correct="false">When phase reaches streaming-card</button>
+      <button data-correct="false">When the server sends phase done</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>20-minute win:</strong> same triage flow, fetch client instead of EventSource.</p>
+    <ol>
+      <li>Run: <code>node practice/0019-ship-triage-api.mjs</code></li>
+      <li>Open <code>http://localhost:3456/fetch.html</code> (fetch demo)</li>
+      <li>Click <strong>Ask about dark mode</strong> — phases should match <code>/</code> (EventSource demo)</li>
+      <li>Open <code>practice/fixtures/triage-fetch-demo.html</code> — find <code>readSseStream</code> and the buffer split on <code>\n\n</code></li>
+      <li>Read <a href="../reference/fetch-stream-client.html">fetch stream client reference</a> — sketch <code>useReducer</code> + <code>useTriageStream</code> for your Next app</li>
+      <li>Optional: clone the <a href="https://github.com/openai/openai-responses-starter-app">Responses starter app</a> and compare its stream consumer to your parse loop</li>
+    </ol>
+    <p>
+      You can now ship the capstone in a stack you already know. Next:
+      extend triage with <a href="0017-file-search.html">file search</a> for
+      doc-grounded answers, or add auth and error boundaries before production.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://developer.mozilla.org/en-US/docs/Web/API/Streams_API/Using_readable_streams">MDN — Using readable streams</a> ·
+    <a href="https://github.com/openai/openai-responses-starter-app">OpenAI Responses starter app</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0019-ship-triage-api.html">Lesson 19 — Ship the Triage API</a> ·
+      Reference: <a href="../reference/fetch-stream-client.html">Fetch Stream Client</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
