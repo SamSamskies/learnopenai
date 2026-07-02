@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 13 — Reasoning Models</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 13 · ~12 minutes</div>
+  <h1>Reasoning Models</h1>
+
+  <p class="epigraph">
+    Lesson 12 let jobs run for minutes.
+    Reasoning models spend invisible tokens <em>before</em> you see the first word.
+  </p>
+
+  <p>
+    <code>gpt-4.1-nano</code> answers in one pass
+    (<a href="0001-first-responses-api-call.html">Lesson 1</a>).
+    <strong>Reasoning models</strong> (e.g. <code>o4-mini</code>, <code>gpt-5.4-mini</code>,
+    <code>gpt-5.5</code>) think first — planning, checking alternatives, recovering from
+    ambiguity — then write the visible answer. Same Responses API; add
+    <code>reasoning: { effort: "…" }</code>.
+    <a href="https://platform.openai.com/docs/guides/reasoning">Reasoning models guide</a>.
+  </p>
+
+  <h2>What you pay for</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Token type</th>
+        <th>Visible?</th>
+        <th>Billed as</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Input</td>
+        <td>Your prompt</td>
+        <td>Input tokens</td>
+      </tr>
+      <tr>
+        <td><strong>Reasoning</strong></td>
+        <td>No — hidden "thinking"</td>
+        <td><strong>Output tokens</strong></td>
+      </tr>
+      <tr>
+        <td>Output</td>
+        <td><code>output_text</code></td>
+        <td>Output tokens</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Read the bill in <code>usage.output_tokens_details.reasoning_tokens</code>.
+    A short answer can still cost many tokens if the model thought hard.
+    This is separate from
+    <a href="0011-prompt-caching.html">prompt caching</a> — caching discounts
+    repeated <em>input</em> prefixes; reasoning is fresh output every call.
+  </p>
+
+  <h2>Reasoning effort</h2>
+
+  <p>
+    <code>reasoning.effort</code> is your latency/cost dial. Supported values
+    depend on the model (<code>low</code>, <code>medium</code>, <code>high</code>,
+    and on newer models <code>none</code>, <code>minimal</code>, <code>xhigh</code>).
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Effort</th>
+        <th>Reach for it when…</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>low</code></td>
+        <td>Default experiment — tool use, support chat, drafting</td>
+      </tr>
+      <tr>
+        <td><code>medium</code></td>
+        <td>Agentic coding, research, tasks needing judgement</td>
+      </tr>
+      <tr>
+        <td><code>high</code> / <code>xhigh</code></td>
+        <td>Hard debugging or deep planning — only when evals prove the gap</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const response = await client.responses.create({
+  model: "o4-mini",
+  reasoning: { effort: "low" },
+  input: "A bat and ball cost $1.10 total. The bat costs $1.00 more than the ball. How much is the ball?",
+  store: true,
+});
+
+console.log(response.output_text);
+console.log(response.usage.output_tokens_details.reasoning_tokens);</pre>
+
+  <div class="callout">
+    <strong>Product rule</strong><br>
+    Start every new feature on the cheapest model that passes your eval.
+    Add reasoning models only for tasks that fail that bar — then tune
+    <code>effort</code> up, not down, based on measured quality gaps.
+  </div>
+
+  <h2>Reasoning summaries (optional)</h2>
+
+  <p>
+    Raw reasoning tokens are not exposed. To show users <em>that</em> the model
+    thought (without the full chain-of-thought), request a summary:
+  </p>
+
+  <pre class="example">reasoning: { effort: "low", summary: "auto" }
+// Inspect response.output for type === "reasoning" → summary[].text</pre>
+
+  <p>
+    Useful for "show your work" UIs in coding or research products. Requires
+    org verification on some models — see the
+    <a href="https://platform.openai.com/docs/guides/reasoning#reasoning-summaries">docs</a>.
+  </p>
+
+  <h2>Tool loops + reasoning</h2>
+
+  <p>
+    When a reasoning model calls your custom tools
+    (<a href="0010-state-across-tool-turns.html">Lesson 10</a>), pass reasoning
+    items forward on the next turn — easiest via
+    <code>previous_response_id</code>. Dropping them wastes the model's prior
+    thinking and can hurt quality.
+  </p>
+
+  <p>
+    Stateless / zero-data-retention: add
+    <code>include: ["reasoning.encrypted_content"]</code> so encrypted reasoning
+    blobs round-trip without <code>store: true</code>.
+    See <a href="../reference/reasoning-models.html">reasoning models reference</a>.
+  </p>
+
+  <h2>Don't run out of budget</h2>
+
+  <p>
+    <code>max_output_tokens</code> caps <em>all</em> generated tokens — reasoning
+    <em>and</em> visible text. Set it too low and you get
+    <code>status: "incomplete"</code> with
+    <code>incomplete_details.reason === "max_output_tokens"</code> — sometimes
+    with no <code>output_text</code> at all. Leave headroom when experimenting;
+    pair long high-effort jobs with
+    <a href="0012-background-mode.html">background mode</a>.
+  </p>
+
+  <h2>When <em>not</em> to use reasoning</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Good fit</th>
+        <th>Poor fit</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Multi-step debugging, codegen, data validation</td>
+        <td>Classification, extraction, simple Q&amp;A on nano</td>
+      </tr>
+      <tr>
+        <td>Agentic tool loops needing planning</td>
+        <td>Latency-sensitive voice / sub-second chat</td>
+      </tr>
+      <tr>
+        <td>Tasks where evals show nano/mini fail</td>
+        <td>"Just in case" — reasoning is a cost multiplier</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Reasoning tokens bill as output even though they are hidden.","false":"Reasoning tokens are not input tokens — they bill as output."}'>
+    <h3>1. How are reasoning tokens billed?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">As output tokens, not input</button>
+      <button data-correct="false">As input tokens, not output</button>
+      <button data-correct="false">Free — they are not billed</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. effort tunes how hard the model thinks before answering.","false":"effort does not pick the model — model is separate."}'>
+    <h3>2. What does reasoning.effort control?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">How hard the model thinks</button>
+      <button data-correct="false">Which model family to run</button>
+      <button data-correct="false">How many tools may run</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. usage.output_tokens_details.reasoning_tokens shows the hidden count.","false":"output_text length does not include reasoning tokens."}'>
+    <h3>3. Where see reasoning token count?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Check usage output token details</button>
+      <button data-correct="false">Check output text character length</button>
+      <button data-correct="false">Check response reasoning done boolean</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>12-minute win:</strong> run the same puzzle at low vs high effort and compare reasoning token counts.</p>
+    <ol>
+      <li>Run: <code>node practice/0013-reasoning-models.mjs</code></li>
+      <li>Step 1–2: note whether both answers are correct (ball = 5¢) and compare <code>reasoning_tokens</code></li>
+      <li>Step 3: skim the optional summary preview in the output</li>
+      <li>Ask yourself: would nano have been enough for this task?</li>
+    </ol>
+    <p>
+      You can now choose when thinking tokens are worth the bill.
+      Lesson 14 will cover <strong>remote MCP</strong> — plugging external tool
+      servers into the Responses API without writing custom function handlers.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/reasoning">Reasoning models guide</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0012-background-mode.html">Lesson 12 — Background Mode</a> ·
+      Reference: <a href="../reference/reasoning-models.html">Reasoning Models</a> ·
+      Next: <a href="0014-remote-mcp.html">Lesson 14 — Remote MCP</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

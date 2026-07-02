@@ -24,6 +24,8 @@
   Cost/latency optimization for repeated prefixes. Use for: production economics.
 - [Background mode](https://platform.openai.com/docs/guides/background)
   Long-running async responses. Use for: jobs that outlive a request timeout.
+- [Reasoning models](https://platform.openai.com/docs/guides/reasoning)
+  Thinking tokens, `reasoning.effort`, summaries, tool-loop context. Use for: when to pay for reasoning vs nano/mini.
 - [API pricing](https://platform.openai.com/docs/pricing)
   Per-model token and tool pricing. Use for: model selection and cost modeling.
 - [OpenAI Agents SDK](https://platform.openai.com/docs/guides/agents)

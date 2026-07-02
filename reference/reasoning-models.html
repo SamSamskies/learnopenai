@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reasoning Models — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Reasoning Models</h1>
+  <p class="subtitle">Thinking tokens, effort tuning, and billing — Responses API.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fact</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>What they do</td>
+        <td>Spend hidden <strong>reasoning tokens</strong> before visible output — planning, debugging, tool use</td>
+      </tr>
+      <tr>
+        <td>Enable</td>
+        <td>Use a reasoning-capable model + <code>reasoning: { effort: "low" | "medium" | "high" | … }</code></td>
+      </tr>
+      <tr>
+        <td>Billing</td>
+        <td>Reasoning tokens count as <strong>output tokens</strong> — not visible in <code>output_text</code></td>
+      </tr>
+      <tr>
+        <td>Observe</td>
+        <td><code>usage.output_tokens_details.reasoning_tokens</code></td>
+      </tr>
+      <tr>
+        <td>Summary</td>
+        <td><code>reasoning: { summary: "auto" }</code> → <code>reasoning</code> item in <code>output</code></td>
+      </tr>
+      <tr>
+        <td>Tool loops</td>
+        <td>Pass reasoning items forward (<code>previous_response_id</code> or full <code>output</code> replay)</td>
+      </tr>
+      <tr>
+        <td>Stateless / ZDR</td>
+        <td><code>include: ["reasoning.encrypted_content"]</code> to round-trip reasoning across turns</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const response = await client.responses.create({
+  model: "o4-mini",           // or gpt-5.4-mini, gpt-5.5
+  reasoning: { effort: "low" },
+  input: hardMultiStepTask,
+  store: true,
+});
+
+const reasoning = response.usage?.output_tokens_details?.reasoning_tokens;
+console.log(response.output_text, { reasoning_tokens: reasoning });</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Effort</th>
+        <th>When</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>low</code></td>
+        <td>Default try — tool use, support chat, drafting</td>
+      </tr>
+      <tr>
+        <td><code>medium</code></td>
+        <td>Agentic coding, research, judgement calls</td>
+      </tr>
+      <tr>
+        <td><code>high</code> / <code>xhigh</code></td>
+        <td>Hard debugging, deep planning — justify with evals</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong><code>max_output_tokens</code></strong><br>
+    Reasoning consumes the output budget. Too low → <code>status: "incomplete"</code> with
+    <code>incomplete_details.reason === "max_output_tokens"</code> — possibly zero visible text.
+  </div>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0013-reasoning-models.html">Lesson 13 — Reasoning Models</a> ·
+      Related: <a href="background-mode.html">Background Mode</a> ·
+      Docs: <a href="https://platform.openai.com/docs/guides/reasoning">Reasoning models guide</a>
+    </p>
+  </footer>
+</body>
+</html>
