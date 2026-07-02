@@ -34,21 +34,29 @@
   <h1>Streaming UI State</h1>
   <p class="subtitle">Map Responses API stream events → UI phases for capstone-shaped features.</p>
 
-  <h2>State shape</h2>
+  <h2>State shape (backlog path)</h2>
   <pre class="example">type TriagePhase =
   | "idle"
+  | "routing"
   | "streaming-args"
   | "running-handler"
   | "streaming-card"
+  | "searching-docs"    // docs path — Lesson 21
+  | "streaming-answer"  // docs path — Lesson 21
   | "done"
   | "error";
 
 type TriageUIState = {
   phase: TriagePhase;
+  path: "backlog" | "docs" | null;
   toolName: string | null;
   argsPreview: string;
-  cardPreview: string;   // raw JSON text — optional display
-  card: TriageCard | null; // set only when phase → done
+  cardPreview: string;
+  card: TriageCard | null;
+  searchQueries: string[];
+  answerPreview: string;
+  answer: string | null;
+  citations: { filename: string; fileId: string }[];
   error: string | null;
 };</pre>
 
@@ -114,8 +122,20 @@ type TriageUIState = {
         <td>Skeleton card or raw JSON preview</td>
       </tr>
       <tr>
-        <td><code>done</code></td>
+        <td><code>done</code> (backlog)</td>
         <td>Typed <code>TriageCard</code> fields — not partial JSON</td>
+      </tr>
+      <tr>
+        <td><code>searching-docs</code></td>
+        <td>“Searching documents…” — built-in runs on platform</td>
+      </tr>
+      <tr>
+        <td><code>streaming-answer</code></td>
+        <td>Answer text preview — append <code>output_text.delta</code></td>
+      </tr>
+      <tr>
+        <td><code>done</code> (docs)</td>
+        <td>Final answer + <code>file_citation</code> filenames</td>
       </tr>
     </tbody>
   </table>
@@ -140,6 +160,7 @@ type TriageUIState = {
     <p>
       Lesson: <a href="../lessons/0016-streaming-ui-state-machine.html">Lesson 16</a> ·
       Ship: <a href="../lessons/0019-ship-triage-api.html">Lesson 19</a> ·
+      Mixed tools: <a href="../lessons/0021-triage-with-file-search.html">Lesson 21</a> ·
       Capstone: <a href="capstone-pattern.html">Capstone Pattern</a> ·
       Events: <a href="streaming-events.html">Streaming Events</a>
     </p>

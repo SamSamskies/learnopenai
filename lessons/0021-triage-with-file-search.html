@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 21 — Triage with File Search</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 21 · ~20 minutes</div>
+  <h1>Triage with File Search</h1>
+
+  <p class="epigraph">
+    Live backlog or uploaded docs.
+    One route — model picks.
+  </p>
+
+  <p>
+    <a href="0015-capstone-feature-triage.html">Lesson 15</a> looked up a live
+    backlog with a custom function. <a href="0017-file-search.html">Lesson 17</a>
+    answered from uploaded docs with <code>file_search</code>.
+    <a href="0020-fetch-stream-client.html">Lesson 20</a> shipped the client.
+    Real triage assistants need <strong>both</strong> — and the model should pick
+    the right tool per question.
+  </p>
+
+  <h2>Two paths, one route</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>User asks about…</th>
+        <th>Tool</th>
+        <th>Turns</th>
+        <th>UI output</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Live backlog / current status</td>
+        <td><code>get_feature_status</code></td>
+        <td>Two — handler + structured card</td>
+        <td><code>TriageCard</code> fields</td>
+      </tr>
+      <tr>
+        <td>Uploaded PRD / roadmap doc</td>
+        <td><code>file_search</code></td>
+        <td>One — platform runs retrieval</td>
+        <td>Free text + <code>file_citation</code> filenames</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Register both in the same <code>tools</code> array. Write
+    <code>instructions</code> that name when to use each. The server branches
+    on the first <code>output_item.added</code> — same SSE contract, different
+    phase machines per path.
+  </p>
+
+  <pre class="example">tools: [
+  zodResponsesFunction({ name: "get_feature_status", … }),
+  { type: "file_search", vector_store_ids: [storeId], max_num_results: 3 },
+]</pre>
+
+  <p>
+    See <a href="../reference/streaming-ui-state.html">streaming UI state</a>,
+    <a href="../reference/file-search.html">file search reference</a>, and
+    <a href="../reference/capstone-pattern.html">capstone pattern</a>.
+  </p>
+
+  <h2>Extended phase machine</h2>
+
+  <p>
+    The backlog path from <a href="0016-streaming-ui-state-machine.html">Lesson 16</a>
+    is unchanged. The docs path adds three phases:
+  </p>
+
+  <pre class="example">routing → searching-docs → streaming-answer → done
+backlog: routing → streaming-args → running-handler → streaming-card → done</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>Path</th>
+        <th>User sees</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>routing</code></td>
+        <td>both</td>
+        <td>“Choosing tool…” before first item</td>
+      </tr>
+      <tr>
+        <td><code>searching-docs</code></td>
+        <td>docs</td>
+        <td>“Searching documents…” (+ queries when available)</td>
+      </tr>
+      <tr>
+        <td><code>streaming-answer</code></td>
+        <td>docs</td>
+        <td>Answer text streaming in</td>
+      </tr>
+      <tr>
+        <td><code>done</code></td>
+        <td>docs</td>
+        <td>Final answer + source filenames from citations</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>UI state shape</strong><br>
+  Add <code>path: "backlog" | "docs"</code> so the client reducer knows which
+  branches to render. Docs path uses <code>answerPreview</code>,
+  <code>answer</code>, and <code>citations[]</code> instead of
+  <code>card</code>. Still one snapshot per SSE frame — the client stays dumb.
+  </div>
+
+  <h2>Server branch (sketch)</h2>
+
+  <pre class="example">for await (const event of turn1) {
+  if (event.item?.type === "function_call") {
+    path = "backlog";
+    state.phase = "streaming-args";
+    // … existing two-turn loop from stream-triage.mjs
+  }
+  if (event.item?.type === "file_search_call") {
+    path = "docs";
+    state.phase = "searching-docs";
+  }
+  if (path === "docs" && event.type === "response.output_text.delta") {
+    state.phase = "streaming-answer";
+    state.answerPreview += event.delta;
+  }
+  if (path === "docs" && event.type === "response.completed") {
+    state.citations = extractFileCitations(event.response);
+    state.phase = "done";  // no turn 2
+  }
+}</pre>
+
+  <div class="callout warn">
+    <strong>Vector store setup</strong><br>
+    <code>file_search</code> needs <code>FILE_SEARCH_VECTOR_STORE_ID</code> in
+    <code>.env</code> (from <a href="0017-file-search.html">Lesson 17</a>).
+    First run uploads <code>product-roadmap.md</code> and prints the id.
+    Reuse it — a tiny doc stays under the free storage tier.
+  </div>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">Browser                     /api/triage
+  │                               │
+  │── fetch ?mode=backlog ───────►│ custom fn → 2 turns → TriageCard
+  │── fetch ?mode=docs ──────────►│ file_search → 1 turn → citations
+  │◄── same SSE snapshots ────────│ path field tells UI which renderer</pre>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Each data source maps to its own tool.","false":"Both tools answer the same data — pick one per feature."}'>
+    <h3>1. Why register both tools on one route?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Different data sources need different tools</button>
+      <button data-correct="false">File search replaces custom functions always</button>
+      <button data-correct="false">Models cannot choose between tool types</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Built-in file_search finishes in one response.","false":"file_search also needs function_call_output turn two."}'>
+    <h3>2. Which path needs a second API turn?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Backlog path needs second turn always</button>
+      <button data-correct="false">Doc path needs second turn always</button>
+      <button data-correct="false">Both paths need two turns each</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Users verify answers against named source files.","false":"Show vector store ids — users cannot act on those."}'>
+    <h3>3. What should UI show for citations?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Source filenames from file citations</button>
+      <button data-correct="false">Raw vector store ids shown to users</button>
+      <button data-correct="false">OpenAI API keys for downloading files</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>20-minute win:</strong> one triage route, two buttons, two UI paths.</p>
+    <ol>
+      <li>Ensure <code>FILE_SEARCH_VECTOR_STORE_ID</code> is in <code>.env</code> (run <code>node practice/0017-file-search.mjs</code> first if needed)</li>
+      <li>Run: <code>node practice/0021-triage-file-search.mjs</code></li>
+      <li>Open <code>http://localhost:3456</code></li>
+      <li>Click <strong>Ask live backlog</strong> — watch <code>path: backlog</code> and the structured card</li>
+      <li>Click <strong>Ask roadmap doc</strong> — watch <code>searching-docs</code> → answer + <code>product-roadmap.md</code> citation</li>
+      <li>Read <code>practice/lib/stream-triage-docs.mjs</code> — find the branch on <code>file_search_call</code></li>
+      <li>Compare render branches in <code>practice/fixtures/triage-docs-demo.html</code></li>
+      <li>Sketch how <code>path</code> becomes a <code>switch</code> in your React reducer</li>
+    </ol>
+    <p>
+      You can now mix custom functions and hosted RAG in one shipped feature.
+      Next: production hardening — auth on the route, error boundaries, and rate
+      limits — or cross-provider comparison from
+      <a href="../reference/file-search.html">file search reference</a>.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/tools-file-search">File search guide</a> ·
+    <a href="https://platform.openai.com/docs/guides/function-calling">Function calling guide</a>
+    (mixing built-ins and custom tools in one request).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0020-fetch-stream-client.html">Lesson 20 — Fetch Stream Client</a> ·
+      Reference: <a href="../reference/streaming-ui-state.html">Streaming UI State</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
