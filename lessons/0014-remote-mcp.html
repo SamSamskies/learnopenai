@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 14 — Remote MCP</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 14 · ~12 minutes</div>
+  <h1>Remote MCP</h1>
+
+  <p class="epigraph">
+    Lesson 7: you run the handler.
+    Lesson 8: OpenAI runs web search.
+    Remote MCP: someone else's server runs the tools — you just wire the URL.
+  </p>
+
+  <p>
+    <strong>Model Context Protocol (MCP)</strong> is a standard for exposing tools
+    to AI clients. With the Responses API you can attach a
+    <strong>remote MCP server</strong> as a built-in tool — same
+    <code>tools</code> array as <code>web_search</code>, but OpenAI discovers
+    tools from an external URL and calls them for you.
+    <a href="https://platform.openai.com/docs/guides/tools-remote-mcp">Remote MCP guide</a>.
+  </p>
+
+  <h2>Three tool patterns (recap)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Pattern</th>
+        <th><code>type</code></th>
+        <th>Who runs it</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Custom function</td>
+        <td><code>function</code></td>
+        <td>Your server (<a href="0007-custom-function-tools.html">Lesson 7</a>)</td>
+      </tr>
+      <tr>
+        <td>Platform built-in</td>
+        <td><code>web_search</code>, etc.</td>
+        <td>OpenAI (<a href="0008-built-in-tools.html">Lesson 8</a>)</td>
+      </tr>
+      <tr>
+        <td>Remote MCP</td>
+        <td><code>mcp</code></td>
+        <td>External MCP server (this lesson)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Product rule: custom for <em>your</em> DB and auth; built-in for generic
+    platform capabilities; MCP when a vendor or community already ships a
+    maintained tool server (GitHub, Stripe, internal services).
+    See <a href="../reference/remote-mcp.html">remote MCP reference</a>.
+  </p>
+
+  <h2>Minimal request</h2>
+
+  <p>
+    Point at a public MCP endpoint. OpenAI lists tools, the model may call one,
+    and you get the answer in a single response — no
+    <code>function_call_output</code> turn.
+  </p>
+
+  <pre class="example">const response = await client.responses.create({
+  model: "gpt-5",
+  tools: [{
+    type: "mcp",
+    server_label: "dmcp",
+    server_description: "D&D dice rolling MCP server.",
+    server_url: "https://dmcp-server.deno.dev/sse",
+    require_approval: "never",
+  }],
+  input: "Roll 2d4+1",
+});
+
+console.log(response.output_text);</pre>
+
+  <p>
+    The docs use this demo server — no API key on the MCP side. Real servers
+    often need <code>authorization</code> (OAuth bearer token).
+  </p>
+
+  <h2>What appears in <code>output</code></h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th><code>type</code></th>
+        <th>When</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>mcp_list_tools</code></td>
+        <td>API imported tool definitions from the server</td>
+      </tr>
+      <tr>
+        <td><code>mcp_call</code></td>
+        <td>Model invoked a tool — see <code>arguments</code> and <code>output</code></td>
+      </tr>
+      <tr>
+        <td><code>message</code></td>
+        <td>Final visible answer in <code>output_text</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Keep <code>mcp_list_tools</code> in context on follow-up turns (e.g. via
+    <code>previous_response_id</code>) so the API does not re-fetch the tool
+    list every call — lower latency.
+  </p>
+
+  <h2>Approvals and trust</h2>
+
+  <div class="callout warn">
+    <strong>Trust the MCP server</strong><br>
+    A malicious server can exfiltrate anything in the model's context. Only
+    connect servers you trust. In production, use
+    <code>require_approval: "always"</code> (or per-tool allowlists) for
+    sensitive actions — the API returns an approval request you resolve before
+    the call runs.
+  </div>
+
+  <p>
+    <code>require_approval: "never"</code> is fine for demos and low-risk tools
+    you fully control. Default to approvals for anything that mutates data or
+    spends money.
+  </p>
+
+  <h2>MCP vs custom function</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Custom function</th>
+        <th>Remote MCP</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>You implement</strong></td>
+        <td>Handler + schema per tool</td>
+        <td>Nothing — server exposes tools</td>
+      </tr>
+      <tr>
+        <td><strong>Turns</strong></td>
+        <td>Two (call + output)</td>
+        <td>One (platform orchestrates)</td>
+      </tr>
+      <tr>
+        <td><strong>Best for</strong></td>
+        <td>Your business logic, tight control</td>
+        <td>Reuse vendor/community tool servers</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. type mcp with a server_url.","false":"MCP uses type function with an mcp prefix."}'>
+    <h3>1. How declare remote MCP?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">type mcp plus server_url</button>
+      <button data-correct="false">type function plus mcp_url</button>
+      <button data-correct="false">type web_search plus mcp flag</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. OpenAI calls the remote server for you.","false":"You still post function_call_output for MCP."}'>
+    <h3>2. Who executes MCP tools?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">OpenAI calls remote server</button>
+      <button data-correct="false">Your server runs handler</button>
+      <button data-correct="false">The browser runs JavaScript</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Malicious MCP can steal context — verify trust.","false":"MCP servers are sandboxed by OpenAI with no risk."}'>
+    <h3>3. Main safety concern?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Untrusted server exfiltrates data</button>
+      <button data-correct="false">MCP breaks prompt caching</button>
+      <button data-correct="false">MCP requires org ID upload</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>10-minute win:</strong> one request, external dice server, inspect MCP output items.</p>
+    <ol>
+      <li>Run: <code>node practice/0014-remote-mcp.mjs</code></li>
+      <li>Confirm <code>mcp_list_tools</code> lists the <code>roll</code> tool</li>
+      <li>Read <code>mcp_call</code> — arguments sent and raw output returned</li>
+      <li>Compare with Lesson 7: no handler code, no second <code>create</code></li>
+      <li>Ask yourself: which tool in your product could be MCP vs custom?</li>
+    </ol>
+    <p>
+      You can now wire external tool servers without reimplementing every
+      vendor API. Next up: pull the curriculum together into a small shipped
+      feature — streaming UI, tools, and structured output in one flow.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/tools-remote-mcp">Remote MCP guide</a>
+    (request shape, output items, approvals, auth).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0013-reasoning-models.html">Lesson 13 — Reasoning Models</a> ·
+      Reference: <a href="../reference/remote-mcp.html">Remote MCP</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

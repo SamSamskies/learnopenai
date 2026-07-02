@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remote MCP — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Remote MCP</h1>
+  <p class="subtitle">External tool servers via <code>type: "mcp"</code> — Responses API.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fact</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>What it does</td>
+        <td>OpenAI lists tools from a remote MCP server and calls them during a response</td>
+      </tr>
+      <tr>
+        <td>Declare</td>
+        <td><code>tools: [{ type: "mcp", server_url, server_label, … }]</code></td>
+      </tr>
+      <tr>
+        <td>Auth</td>
+        <td>Often <code>authorization: "Bearer …"</code> on the tool object</td>
+      </tr>
+      <tr>
+        <td>Output items</td>
+        <td><code>mcp_list_tools</code>, <code>mcp_call</code>, then <code>message</code></td>
+      </tr>
+      <tr>
+        <td>Approvals</td>
+        <td><code>require_approval: "always" | "never" | { tool_name: "never" }</code></td>
+      </tr>
+      <tr>
+        <td>Latency tip</td>
+        <td>Keep <code>mcp_list_tools</code> in context — avoid re-listing each turn</td>
+      </tr>
+      <tr>
+        <td>Safety</td>
+        <td>Only trust servers you control or verify — context exfiltration risk</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">tools: [{
+  type: "mcp",
+  server_label: "dmcp",
+  server_description: "Dice rolling demo server.",
+  server_url: "https://dmcp-server.deno.dev/sse",
+  require_approval: "never",
+}]
+// OAuth servers: add authorization: `Bearer ${token}`</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>vs</th>
+        <th>Custom <code>function</code></th>
+        <th>Remote <code>mcp</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Handler</td>
+        <td>Your code</td>
+        <td>External MCP server</td>
+      </tr>
+      <tr>
+        <td>Turns</td>
+        <td>Two (<code>function_call_output</code>)</td>
+        <td>One</td>
+      </tr>
+      <tr>
+        <td>Schema</td>
+        <td>You define JSON Schema</td>
+        <td>Server publishes tools</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0014-remote-mcp.html">Lesson 14 — Remote MCP</a> ·
+      Related: <a href="built-in-tools.html">Built-in Tools</a> ·
+      Docs: <a href="https://platform.openai.com/docs/guides/tools-remote-mcp">Remote MCP guide</a>
+    </p>
+  </footer>
+</body>
+</html>
