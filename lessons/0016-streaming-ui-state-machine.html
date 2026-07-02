@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 16 — Streaming UI State Machine</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 16 · ~20 minutes</div>
+  <h1>Streaming UI State Machine</h1>
+
+  <p class="epigraph">
+    The API streams events.
+    The UI streams phases.
+  </p>
+
+  <p>
+    <a href="0015-capstone-feature-triage.html">Lesson 15</a> ran the full
+    triage flow in the terminal. Your mission success criteria still need the
+    other half: a <strong>streaming UI</strong> a user actually sees. This lesson
+    maps API events to UI state — the pattern behind every chat surface, form
+    filler, and agent panel you ship.
+  </p>
+
+  <h2>Events are not UI state</h2>
+
+  <p>
+    A common mistake: storing raw stream events in React state and rendering
+    from them. Events are <em>inputs</em> to a reducer; the UI reads
+    <strong>phases</strong> and derived fields.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Layer</th>
+        <th>Owns</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>API</strong> (server)</td>
+        <td>Two-turn loop, tool handler, <code>previous_response_id</code></td>
+      </tr>
+      <tr>
+        <td><strong>Transport</strong></td>
+        <td>SSE or fetch stream — forward mapped UI updates to the browser</td>
+      </tr>
+      <tr>
+        <td><strong>UI</strong> (client)</td>
+        <td>Phase machine, previews, typed card at the end</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    See <a href="../reference/streaming-ui-state.html">streaming UI state reference</a>
+    and <a href="../reference/capstone-pattern.html">capstone pattern</a>.
+  </p>
+
+  <h2>The phase machine</h2>
+
+  <p>
+    For the capstone triage feature, six phases cover the full user journey:
+  </p>
+
+  <pre class="example">idle → streaming-args → running-handler → streaming-card → done
+                                                              ↘ error</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>User sees</th>
+        <th>Triggered by</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>idle</code></td>
+        <td>Input ready, send button enabled</td>
+        <td>Initial / after reset</td>
+      </tr>
+      <tr>
+        <td><code>streaming-args</code></td>
+        <td>“Calling get_feature_status…” + live args JSON</td>
+        <td><code>output_item.added</code> (function_call)</td>
+      </tr>
+      <tr>
+        <td><code>running-handler</code></td>
+        <td>Spinner — “Looking up backlog…”</td>
+        <td>Turn 1 complete; your handler runs</td>
+      </tr>
+      <tr>
+        <td><code>streaming-card</code></td>
+        <td>Skeleton card or raw JSON preview</td>
+        <td>Turn 2 stream starts</td>
+      </tr>
+      <tr>
+        <td><code>done</code></td>
+        <td>Typed <code>TriageCard</code> — title, status, priority, recommendation</td>
+        <td><code>finalResponse().output_parsed</code></td>
+      </tr>
+      <tr>
+        <td><code>error</code></td>
+        <td>Error message + retry</td>
+        <td>Handler throw, API error, Zod parse failure</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>Still don't parse partial JSON</strong><br>
+    During <code>streaming-card</code>, show a skeleton or monospace preview.
+    Render typed fields only when <code>phase === "done"</code> — same rule as
+    <a href="0006-stream-structured-output.html">Lesson 6</a>.
+  </div>
+
+  <h2>Reducer sketch (React)</h2>
+
+  <p>
+    Your frontend experience maps cleanly to <code>useReducer</code>. The
+    server sends compact UI events; the reducer updates phase and previews:
+  </p>
+
+  <pre class="example">type Action =
+  | { type: "SUBMIT" }
+  | { type: "TOOL_STARTED"; toolName: string }
+  | { type: "ARGS_DELTA"; delta: string }
+  | { type: "ARGS_DONE"; args: string }
+  | { type: "HANDLER_START" }
+  | { type: "CARD_STREAM_START" }
+  | { type: "CARD_DELTA"; delta: string }
+  | { type: "CARD_DONE"; card: TriageCard }
+  | { type: "ERROR"; message: string };
+
+function triageReducer(state, action) {
+  switch (action.type) {
+    case "SUBMIT":
+      return { ...initialState, phase: "streaming-args" };
+    case "TOOL_STARTED":
+      return { ...state, phase: "streaming-args", toolName: action.toolName };
+    case "HANDLER_START":
+      return { ...state, phase: "running-handler" };
+    case "CARD_STREAM_START":
+      return { ...state, phase: "streaming-card", cardPreview: "" };
+    case "CARD_DONE":
+      return { ...state, phase: "done", card: action.card };
+  }
+}</pre>
+
+  <h2>Server boundary</h2>
+
+  <p>
+    The browser never holds your API key. An API route runs the capstone loop
+    and streams <em>mapped</em> events to the client:
+  </p>
+
+  <pre class="example">// app/api/triage/route.ts (sketch)
+export async function POST(req: Request) {
+  const { question } = await req.json();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (payload) =>
+        controller.enqueue(`data: ${JSON.stringify(payload)}\n\n`);
+
+      send({ type: "TOOL_STARTED", toolName: "get_feature_status" });
+      // … turn 1 events → send ARGS_DELTA, ARGS_DONE
+      send({ type: "HANDLER_START" });
+      // … run getFeatureStatus, start turn 2
+      send({ type: "CARD_STREAM_START" });
+      // … CARD_DELTA optional
+      send({ type: "CARD_DONE", card: response.output_parsed });
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}</pre>
+
+  <p>
+    The official
+    <a href="https://github.com/openai/openai-responses-starter-app">Responses starter app</a>
+    is a full Next.js implementation of this pattern — clone it when you move
+    from reducer sketch to shipped UI.
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming guide</a>.
+  </p>
+
+  <h2>What you already built</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Lesson</th>
+        <th>Maps to UI phase</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a href="0009-streaming-tool-calls.html">9 — stream tool calls</a></td>
+        <td><code>streaming-args</code></td>
+      </tr>
+      <tr>
+        <td><a href="0007-custom-function-tools.html">7 — custom tools</a></td>
+        <td><code>running-handler</code></td>
+      </tr>
+      <tr>
+        <td><a href="0006-stream-structured-output.html">6 — stream structured</a></td>
+        <td><code>streaming-card</code> → <code>done</code></td>
+      </tr>
+      <tr>
+        <td><a href="0010-state-across-tool-turns.html">10 — state across turns</a></td>
+        <td>Server holds <code>responseId</code> between phases</td>
+      </tr>
+      <tr>
+        <td><a href="0015-capstone-feature-triage.html">15 — capstone</a></td>
+        <td>Full loop this lesson surfaces in the UI</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. The server maps raw API events to compact UI actions.","false":"The browser should not hold the API key — the server runs the loop."}'>
+    <h3>1. Where does the two-turn API loop run?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">In the browser with the API key</button>
+      <button data-correct="true">On your server in an API route</button>
+      <button data-correct="false">Only in the OpenAI dashboard</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Typed fields render only after output_parsed is ready.","false":"Show skeleton or raw preview during stream — typed fields wait for done."}'>
+    <h3>2. When does the UI render typed card fields?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">On every output_text delta</button>
+      <button data-correct="true">When phase is done with output_parsed</button>
+      <button data-correct="false">As soon as the handler returns</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. running-handler covers your sync tool execution.","false":"running-handler is the phase while your code executes the tool."}'>
+    <h3>3. What phase covers your get_feature_status call?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">streaming-args</button>
+      <button data-correct="true">running-handler</button>
+      <button data-correct="false">streaming-card</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>20-minute win:</strong> see UI phases log in the terminal, then sketch the React surface.</p>
+    <ol>
+      <li>Run: <code>node practice/0016-ui-state-machine.mjs</code></li>
+      <li>Watch <code>[UI]</code> lines — each is a state transition your reducer would dispatch</li>
+      <li>Open <a href="../reference/streaming-ui-state.html">streaming UI state reference</a> alongside the output</li>
+      <li>Sketch a <code>TriageCard</code> component with a switch on <code>phase</code></li>
+      <li>Optional: clone the <a href="https://github.com/openai/openai-responses-starter-app">starter app</a> and find where it maps stream events to chat UI</li>
+    </ol>
+    <p>
+      You now have the mental model for shipping the capstone in a real product.
+      Next: <strong>Agents SDK</strong> when multi-agent orchestration outgrows
+      a hand-rolled loop — or <strong>file search</strong> when your product
+      needs RAG over uploaded docs.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://github.com/openai/openai-responses-starter-app">OpenAI Responses starter app</a>
+    (full Next.js streaming UI) ·
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0015-capstone-feature-triage.html">Lesson 15 — Capstone</a> ·
+      Reference: <a href="../reference/streaming-ui-state.html">Streaming UI State</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
