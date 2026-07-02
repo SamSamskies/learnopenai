@@ -14,6 +14,8 @@
   Server-sent events for incremental output. Use for: chat UIs, latency perception.
 - [Built-in tools (web search, file search, code interpreter)](https://platform.openai.com/docs/guides/tools)
   Platform-managed tool execution. Use for: deciding build vs buy for tool features.
+- [File search](https://platform.openai.com/docs/guides/tools-file-search)
+  Vector stores + hosted RAG over uploaded docs. Use for: doc-Q&A without rolling your own retrieval.
 - [Remote MCP](https://platform.openai.com/docs/guides/tools-remote-mcp)
   Connect external MCP servers to the Responses API. Use for: MCP integration topic.
 - [Conversation state](https://platform.openai.com/docs/guides/conversation-state)

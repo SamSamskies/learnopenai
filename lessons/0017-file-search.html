@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 17 — File Search</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 17 · ~15 minutes</div>
+  <h1>File Search</h1>
+
+  <p class="epigraph">
+    Your docs live in a vector store.
+    OpenAI runs the retrieval.
+  </p>
+
+  <p>
+    <a href="0016-streaming-ui-state-machine.html">Lesson 16</a> mapped the
+    capstone to UI phases. The capstone used a <strong>custom function</strong>
+    against a hard-coded backlog. Real products also need answers from
+    <strong>uploaded documents</strong> — PRDs, support articles, contracts.
+    <code>file_search</code> is OpenAI's hosted RAG: you upload files, the
+    platform indexes and retrieves them. Same one-request pattern as
+    <a href="0008-built-in-tools.html">web search in Lesson 8</a>.
+    <a href="https://platform.openai.com/docs/guides/tools-file-search">File search guide</a>.
+  </p>
+
+  <h2>Four tool patterns (complete)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Pattern</th>
+        <th>Data source</th>
+        <th>Who runs it</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Custom function</td>
+        <td>Your live DB / APIs</td>
+        <td>Your server</td>
+      </tr>
+      <tr>
+        <td><code>web_search</code></td>
+        <td>Public web</td>
+        <td>OpenAI</td>
+      </tr>
+      <tr>
+        <td><code>file_search</code></td>
+        <td>Your uploaded files</td>
+        <td>OpenAI</td>
+      </tr>
+      <tr>
+        <td><code>mcp</code></td>
+        <td>External MCP server</td>
+        <td>Third-party server</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Mission success: choose the right one per feature — not cargo-cult one
+    pattern everywhere. See
+    <a href="../reference/file-search.html">file search reference</a> and
+    <a href="../reference/built-in-tools.html">built-in tools reference</a>.
+  </p>
+
+  <h2>Setup: vector store pipeline</h2>
+
+  <p>
+    Unlike <code>web_search</code>, file search needs a one-time (or periodic)
+    setup before you can query:
+  </p>
+
+  <ol>
+    <li><strong>Upload</strong> — <code>files.create</code> with <code>purpose: "assistants"</code></li>
+    <li><strong>Create vector store</strong> — a named knowledge base</li>
+    <li><strong>Attach file</strong> — <code>vectorStores.files.create</code></li>
+    <li><strong>Wait</strong> — poll until indexing <code>status === "completed"</code></li>
+    <li><strong>Query</strong> — pass <code>vector_store_ids</code> in the tool config</li>
+  </ol>
+
+  <pre class="example">// 1–4: setup (run once, reuse the vector store id)
+const file = await client.files.create({
+  file: fs.createReadStream("roadmap.pdf"),
+  purpose: "assistants",
+});
+const store = await client.vectorStores.create({ name: "product-docs" });
+await client.vectorStores.files.create(store.id, { file_id: file.id });
+// … poll until completed …
+
+// 5: query — one request, no handler
+const response = await client.responses.create({
+  model: "gpt-4.1-mini",
+  input: "What is dark mode's priority on the roadmap?",
+  tools: [{
+    type: "file_search",
+    vector_store_ids: [store.id],
+    max_num_results: 3,
+  }],
+});</pre>
+
+  <div class="callout warn">
+    <strong>Cost and reuse</strong><br>
+    Vector stores have storage billing. For practice, save the
+    <code>vector_store_id</code> in <code>.env</code> and reuse it — the
+    practice script does this automatically after the first run.
+  </div>
+
+  <h2>What's in the response</h2>
+
+  <p>
+    Mirror web search: a platform call item plus a message. Citations point at
+    <em>your files</em>, not URLs.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Contains</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>file_search_call</code></td>
+        <td><code>status</code>, semantic <code>queries</code> the model used</td>
+      </tr>
+      <tr>
+        <td><code>message</code></td>
+        <td><code>output_text</code> plus <code>file_citation</code> annotations</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const search = response.output.find(i => i.type === "file_search_call");
+const msg = response.output.find(i => i.type === "message");
+
+search?.queries;              // ["dark mode priority roadmap"]
+response.output_text;         // user-facing answer
+msg?.content[0].annotations;  // [{ type: "file_citation", filename, file_id }]</pre>
+
+  <div class="callout">
+    <strong>UI mapping</strong><br>
+    Show “Searching documents…” while the request runs (built-ins can take a few
+    seconds). Render <code>filename</code> from citations so users can verify
+    the source — same trust pattern as <code>url_citation</code> for web search.
+  </div>
+
+  <h2>Capstone contrast</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th><code>get_feature_status</code> (Lesson 15)</th>
+        <th><code>file_search</code> (this lesson)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Data</strong></td>
+        <td>Live structured backlog</td>
+        <td>Uploaded unstructured docs</td>
+      </tr>
+      <tr>
+        <td><strong>Turns</strong></td>
+        <td>Two — handler + structured card</td>
+        <td>One — answer in same response</td>
+      </tr>
+      <tr>
+        <td><strong>Output</strong></td>
+        <td>Zod <code>TriageCard</code></td>
+        <td>Free text + file citations</td>
+      </tr>
+      <tr>
+        <td><strong>When</strong></td>
+        <td>Authoritative system of record</td>
+        <td>Static docs users uploaded</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    A production triage assistant might use <strong>both</strong>: custom function
+    for the live backlog, <code>file_search</code> over PRDs and support macros.
+    Mix tools in the same <code>tools</code> array — the model picks.
+  </p>
+
+  <h2>Tuning knobs</h2>
+
+  <ul>
+    <li><code>max_num_results</code> — fewer chunks = lower latency and token cost; may reduce answer quality</li>
+    <li><code>filters</code> — metadata on vector store files (e.g. only <code>category: blog</code>)</li>
+    <li><code>include: ["file_search_call.results"]</code> — return raw search hits for debugging or UI “sources” panels</li>
+  </ul>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. OpenAI indexes and searches your vector store.","false":"Your server runs file_search — only custom functions do."}'>
+    <h3>1. Who runs file_search retrieval?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">OpenAI platform runs it</button>
+      <button data-correct="false">Your server runs it</button>
+      <button data-correct="false">The browser runs it</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Built-ins finish in one response.","false":"file_search needs function_call_output like custom tools."}'>
+    <h3>2. Second turn for file search?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">No second turn needed</button>
+      <button data-correct="false">Yes send function output</button>
+      <button data-correct="false">Yes append to instructions</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. file_search reads your uploaded vector store.","false":"file_search searches the public web — that is web_search."}'>
+    <h3>3. Where does file_search look?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Your uploaded vector store</button>
+      <button data-correct="false">The public web search index</button>
+      <button data-correct="false">Model training data only</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>15-minute win:</strong> index a roadmap doc and ask about dark mode.</p>
+    <ol>
+      <li>Run: <code>node practice/0017-file-search.mjs</code></li>
+      <li>First run creates a vector store — copy <code>FILE_SEARCH_VECTOR_STORE_ID</code> into <code>.env</code></li>
+      <li>Confirm <code>file_search_call</code> and <code>queries</code> in the log</li>
+      <li>Read <code>output_text</code> — should cite <code>product-roadmap.md</code></li>
+      <li>Inspect <code>file_citation</code> annotations — filenames your UI should show</li>
+      <li>Compare with <code>practice/0015-capstone-feature-triage.mjs</code> — when would you use each?</li>
+      <li>Optional: open <code>practice/fixtures/product-roadmap.md</code> and ask a question the doc does <em>not</em> answer — watch the model stay honest</li>
+    </ol>
+    <p>
+      You can now choose RAG build vs buy. Next:
+      <strong>Agents SDK</strong> when a hand-rolled two-turn loop grows into
+      multi-step orchestration — or wire the capstone reducer into a real
+      Next.js API route when you're ready to ship UI.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/tools-file-search">File search guide</a>
+    (vector stores, tool config, citations, metadata filters).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0016-streaming-ui-state-machine.html">Lesson 16 — Streaming UI State</a> ·
+      Reference: <a href="../reference/file-search.html">File Search</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

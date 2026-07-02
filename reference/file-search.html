@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Search — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>File Search</h1>
+  <p class="subtitle">Hosted RAG — vector store + <code>file_search</code> built-in tool.</p>
+
+  <h2>Setup pipeline</h2>
+  <pre class="example">files.create(purpose: "assistants")
+  → vectorStores.create()
+  → vectorStores.files.create(vector_store_id, file_id)
+  → poll until status === "completed"
+  → responses.create({ tools: [{ type: "file_search", vector_store_ids }] })</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Step</th>
+        <th>API</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Upload</td>
+        <td><code>client.files.create</code></td>
+        <td><code>purpose: "assistants"</code></td>
+      </tr>
+      <tr>
+        <td>Store</td>
+        <td><code>client.vectorStores.create</code></td>
+        <td>Reusable knowledge base id</td>
+      </tr>
+      <tr>
+        <td>Attach</td>
+        <td><code>vectorStores.files.create</code></td>
+        <td>Poll until indexed</td>
+      </tr>
+      <tr>
+        <td>Query</td>
+        <td><code>responses.create</code> + <code>file_search</code></td>
+        <td>One request — no turn 2</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Tool config</h2>
+  <pre class="example">tools: [{
+  type: "file_search",
+  vector_store_ids: ["vs_…"],
+  max_num_results: 3,        // fewer = cheaper/faster
+  filters: { … },            // metadata on vector store files
+}]</pre>
+
+  <h2>Response shape</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Output item</th>
+        <th>Contains</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>file_search_call</code></td>
+        <td><code>status</code>, <code>queries</code> used for retrieval</td>
+      </tr>
+      <tr>
+        <td><code>message</code></td>
+        <td><code>output_text</code> + <code>file_citation</code> annotations</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">const call = response.output.find(i => i.type === "file_search_call");
+const msg = response.output.find(i => i.type === "message");
+
+call?.queries;
+response.output_text;
+msg?.content[0].annotations;  // [{ type: "file_citation", filename, file_id, index }]</pre>
+
+  <h2>Build vs buy</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Need</th>
+        <th>Pick</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Your live backlog DB</td>
+        <td>Custom function (<a href="function-calling.html">Lesson 7</a>)</td>
+      </tr>
+      <tr>
+        <td>Uploaded PDFs / docs</td>
+        <td><code>file_search</code></td>
+      </tr>
+      <tr>
+        <td>Current public web info</td>
+        <td><code>web_search</code></td>
+      </tr>
+      <tr>
+        <td>Full control of chunking / embeddings</td>
+        <td>Roll your own RAG + custom tool</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>UI mapping</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>User sees</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>In flight</td>
+        <td>“Searching documents…” (built-in — can take seconds)</td>
+      </tr>
+      <tr>
+        <td>Done</td>
+        <td>Answer + linked <code>filename</code> from citations</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top: 1.5rem; font-size: 0.95rem;">
+    Lesson: <a href="../lessons/0017-file-search.html">File Search</a> ·
+    Docs: <a href="https://platform.openai.com/docs/guides/tools-file-search">File search guide</a> ·
+    Related: <a href="built-in-tools.html">Built-in Tools</a>
+  </p>
+
+  <footer>
+    <p style="font-size: 0.85rem; color: var(--muted);">
+      Practice: <code>practice/0017-file-search.mjs</code>
+    </p>
+  </footer>
+</body>
+</html>
