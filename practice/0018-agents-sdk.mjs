@@ -38,7 +38,7 @@ const triageAgent = new Agent({
   name: "Product Triage",
   model: "gpt-4.1-nano",
   instructions:
-    "You are a product assistant. Use get_feature_status when you need real backlog data, then return a triage card grounded in the tool result.",
+    "You are a product assistant. Call get_feature_status at most once per question. If tool results are already in the conversation, use them — do not call the tool again. Return a triage card grounded in the tool result.",
   tools: [getFeatureStatus],
   outputType: TriageCard,
 });
