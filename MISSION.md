@@ -4,9 +4,14 @@
 
 Become a proficient AI Product Engineer who can design, build, and ship products on top of LLM APIs — not just prompt in a chat UI. As a solo builder with 10+ years of frontend experience (and growing Cursor fluency), the goal is to master the OpenAI platform primitives (Responses API, tools, structured outputs, streaming, state, MCP) so those patterns transfer cleanly to other providers and into real shipped products.
 
+## Capstone project (in progress)
+
+**Research Assistant** — a Next.js app for solo builders to research topics with web search, streaming answers, citations, multi-turn threads, and optional uploaded docs. Built incrementally in Lessons 25+ inside `research-assistant/`. Reuses the triage capstone architecture (server boundary, SSE UI snapshots, guards, `previous_response_id`) with a research-shaped product surface.
+
 ## Success looks like
 
-- Ship a small end-to-end AI product feature using the Responses API (streaming UI, tool calls, structured JSON output)
+- Ship the Research Assistant end-to-end (streaming UI, web search, citations, multi-turn threads)
+- Ship a small end-to-end AI product feature using the Responses API (streaming UI, tool calls, structured JSON output) — met at practice level via triage capstone; now shipping as the research app
 - Confidently choose when to use built-in tools vs custom functions vs MCP vs file search
 - Manage conversation state, prompt caching, and background mode with intentional tradeoffs — not cargo-culting
 - Read OpenAI docs and changelog and know what changed and what it means for a product

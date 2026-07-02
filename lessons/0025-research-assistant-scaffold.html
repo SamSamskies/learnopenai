@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 25 — Research Assistant Scaffold</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 25 · ~25 minutes</div>
+  <h1>Research Assistant Scaffold</h1>
+
+  <p class="epigraph">
+    Platform skills are done.
+    Now you ship a product.
+  </p>
+
+  <p>
+    <a href="0024-image-generation.html">Lesson 24</a> closed the OpenAI primitives
+    list. You already proved the hard parts in practice — streaming SSE, tool calls,
+    structured output, file search, guards, multi-turn state. This lesson starts
+    the <strong>capstone app</strong>: a Next.js research assistant that reuses
+    those patterns in a stack you know.
+  </p>
+
+  <h2>What you're building</h2>
+
+  <p>
+    A research assistant for solo builders: ask a question, get a web-grounded
+    answer with citations, follow up in the same thread, optionally upload docs
+    for grounded answers. Not another triage demo — a product you'd actually use.
+  </p>
+
+  <p>
+    Full roadmap:
+    <a href="../reference/research-assistant.html">research assistant reference</a>.
+    This lesson only scaffolds the shell; each following lesson adds one slice.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Practice capstone</th>
+        <th>Research Assistant</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Node <code>http</code> server on port 3456</td>
+        <td>Next.js App Router on port 3000</td>
+      </tr>
+      <tr>
+        <td><code>fixtures/triage-*.html</code> demos</td>
+        <td>React components in <code>app/page.tsx</code></td>
+      </tr>
+      <tr>
+        <td>Backlog lookup + triage card</td>
+        <td><code>web_search</code> + citations + research brief</td>
+      </tr>
+      <tr>
+        <td><code>practice/lib/stream-triage*.mjs</code></td>
+        <td><code>research-assistant/lib/stream-research.ts</code> (Lesson 26+)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Architecture (end state)</h2>
+
+  <pre class="example">Browser (React)          Next.js route handler          OpenAI
+     │  POST /api/research              │
+     │  { message, sessionId }          │
+     │─────────────────────────────────►│ guard → stream loop
+     │                                  │ web_search / file_search
+     │◄── SSE UI snapshots ─────────────│ store + previous_response_id
+     │  phase: searching | streaming    │
+     │  phase: done + citations         │</pre>
+
+  <p>
+    Same server boundary as
+    <a href="0019-ship-triage-api.html">Lesson 19</a> — API key never in the
+    browser. Same SSE contract as
+    <a href="0020-fetch-stream-client.html">Lesson 20</a> — UI phase snapshots,
+    not raw OpenAI events.
+  </p>
+
+  <h2>Scaffold choices</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Choice</th>
+        <th>Why</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>App Router</td>
+        <td>Route handlers replace your <code>http.createServer</code> routes</td>
+      </tr>
+      <tr>
+        <td>TypeScript</td>
+        <td>Zod schemas port cleanly from practice scripts</td>
+      </tr>
+      <tr>
+        <td><code>research-assistant/</code> subfolder</td>
+        <td>Keeps lessons + practice separate from the shipped app</td>
+      </tr>
+      <tr>
+        <td>No <code>src/</code> directory</td>
+        <td>Matches OpenAI starter app layout — less path friction</td>
+      </tr>
+      <tr>
+        <td>Tailwind optional</td>
+        <td>Use it if you want speed; plain CSS is fine for learning</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. web_search fits open-web research.","false":"Backlog lookup is triage — not research."}'>
+    <h3>1. Primary tool for V1 research questions?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">web_search built-in tool</button>
+      <button data-correct="false">Custom get_feature_status</button>
+      <button data-correct="false">image_generation tool</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Same SSE snapshot contract as triage.","false":"Raw OpenAI events belong server-side only."}'>
+    <h3>2. What crosses the wire to the browser?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">UI phase snapshots from your route</button>
+      <button data-correct="false">Raw response.output deltas</button>
+      <button data-correct="false">OPENAI_API_KEY for retries</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Subfolder keeps the learning repo organized.","false":"Mixing into practice/ blurs demo vs product."}'>
+    <h3>3. Where does the app live?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">research-assistant/ at repo root</button>
+      <button data-correct="false">practice/research-assistant.mjs</button>
+      <button data-correct="false">lessons/ as static HTML only</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>25-minute win:</strong> a running Next.js shell named Research Assistant.</p>
+    <ol>
+      <li>From the repo root, scaffold the app:
+        <pre class="example">cd /path/to/learnopenai
+npx create-next-app@latest research-assistant \
+  --typescript --eslint --app --no-src-dir \
+  --import-alias "@/*" --turbopack --yes</pre>
+        Skip Tailwind if you prefer — add <code>--tailwind</code> or accept the default prompt.
+      </li>
+      <li>Install the OpenAI SDK:
+        <pre class="example">cd research-assistant
+npm install openai zod</pre>
+      </li>
+      <li>Copy env (server-only):
+        <pre class="example">echo "OPENAI_API_KEY=sk-..." > .env.local</pre>
+        Use the same key as your root <code>.env</code>. Never commit <code>.env.local</code>.
+      </li>
+      <li>Edit <code>app/page.tsx</code> — replace the default page with a minimal shell:
+        <ul>
+          <li>Title: <strong>Research Assistant</strong></li>
+          <li>Subtitle: <em>Web-grounded research for solo builders</em></li>
+          <li>Placeholder textarea + disabled Send button (wired in Lesson 27)</li>
+        </ul>
+      </li>
+      <li>Run <code>npm run dev</code> — confirm <code>http://localhost:3000</code> shows your shell</li>
+      <li>Skim <a href="../reference/research-assistant.html">research assistant reference</a> — note the lesson arc through Lesson 31</li>
+      <li>Optional: clone <a href="https://github.com/openai/openai-responses-starter-app">OpenAI Responses starter app</a> in a temp folder and compare its folder layout to yours</li>
+    </ol>
+    <p>
+      <strong>Next lesson (26):</strong> add <code>app/api/research/route.ts</code> —
+      a non-streaming POST that calls <code>web_search</code> and returns answer +
+      citations. You'll <code>curl</code> it before building the React client.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://nextjs.org/docs/app/getting-started">Next.js App Router getting started</a> ·
+    <a href="https://github.com/openai/openai-responses-starter-app">OpenAI Responses starter app</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0024-image-generation.html">Lesson 24 — Image Generation</a> ·
+      Reference: <a href="../reference/research-assistant.html">Research Assistant</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -34,8 +34,12 @@
   Orchestration layer on top of Responses API. Use for: multi-step agent workflows.
 - [Image generation](https://platform.openai.com/docs/guides/image-generation)
   Image API (`images.generate` / `images.edit`) and Responses `image_generation` built-in tool. Use for: product image features, conversational mockup editors.
+- [Next.js App Router](https://nextjs.org/docs/app)
+  Route handlers, layouts, server components. Use for: Research Assistant capstone (Lessons 25+).
+- [Next.js Route Handlers](https://nextjs.org/docs/app/building-your-application/routing/route-handlers)
+  `app/api/*/route.ts` — replaces Node `http.createServer` from triage practice. Use for: streaming research API.
 - [openai-responses-starter-app](https://github.com/openai/openai-responses-starter-app)
-  Official starter repo. Use for: reference implementation patterns.
+  Official starter repo. Use for: reference implementation patterns; compare to `research-assistant/` as you build.
 
 ## Wisdom (Communities)
 

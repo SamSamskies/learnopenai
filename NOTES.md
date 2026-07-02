@@ -18,6 +18,13 @@ Responses API, streaming, tool calling, structured outputs, image generation, fi
 - **ChatGPT subscription** (`chatgpt.com`) does NOT include API credits. Useful as a complement, not a substitute.
 - Recommended: start with API platform only; add **ChatGPT Plus** if wanting Codex/thinking models for interactive exploration alongside API work. Skip Pro unless hitting Plus limits daily.
 
+## Capstone app (session 25+)
+
+- **Product:** Research Assistant — web-grounded Q&A with citations, not internal backlog triage.
+- **Stack:** Next.js App Router, TypeScript, Zod, OpenAI Node SDK. App lives in `research-assistant/`.
+- **Lesson arc:** One vertical slice per lesson — scaffold → API → streaming UI → structured brief → threads → file search → hardening.
+- **Reuse:** Port patterns from `practice/lib/` (stream helpers, triage guard) rather than relearning from scratch.
+
 ## Preferences
 
 - **No org ID / KYC:** Will not verify OpenAI organization for gated features (e.g. reasoning summaries). Practice scripts should not require it.

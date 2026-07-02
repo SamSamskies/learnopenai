@@ -2,3 +2,5 @@
 node_modules
 .DS_Store
 practice/output/
+research-assistant/.next
+research-assistant/node_modules
