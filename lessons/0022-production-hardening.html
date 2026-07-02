@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 22 — Production Hardening</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 22 · ~20 minutes</div>
+  <h1>Production Hardening</h1>
+
+  <p class="epigraph">
+    Demo proved the feature.
+    Now protect the route.
+  </p>
+
+  <p>
+    <a href="0021-triage-with-file-search.html">Lesson 21</a> completed the
+    capstone: backlog tool, file search, fetch client, SSE snapshots. A real
+    product still needs a <strong>server boundary you can ship</strong> — auth
+    before the stream opens, rate limits before OpenAI bills you, and errors
+    that do not leak platform internals.
+  </p>
+
+  <h2>Two error channels</h2>
+
+  <p>
+    Streaming routes have <em>two</em> failure modes. Mixing them confuses the
+    client and breaks React error boundaries.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Failure</th>
+        <th>When</th>
+        <th>Response</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Pre-stream</strong></td>
+        <td>Auth, rate limit, invalid body — before SSE starts</td>
+        <td>HTTP <code>401</code> / <code>429</code> + JSON <code>{ error }</code></td>
+      </tr>
+      <tr>
+        <td><strong>Mid-stream</strong></td>
+        <td>OpenAI error after bytes already sent</td>
+        <td>SSE snapshot <code>{ phase: "error", error: "…" }</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    See <a href="../reference/production-hardening.html">production hardening reference</a>
+    and <a href="../reference/fetch-stream-client.html">fetch stream client</a>.
+  </p>
+
+  <pre class="example">// Client — check HTTP status BEFORE parsing SSE
+const res = await fetch("/api/triage", { headers: { Authorization: `Bearer ${token}` } });
+if (!res.ok) {
+  const { error } = await res.json();
+  dispatch({ phase: "error", error });
+  return;
+}
+await readSseStream(res, dispatch);</pre>
+
+  <div class="callout warn">
+    <strong>Never send <code>OPENAI_API_KEY</code> to the browser.</strong><br>
+    The Bearer token in this lesson is an <em>app</em> secret
+    (<code>TRIAGE_API_SECRET</code>) — proof the caller may use your route.
+    In production that becomes a session cookie or JWT from your auth provider.
+  </div>
+
+  <h2>Auth guard</h2>
+
+  <p>
+    Run checks <em>before</em> <code>writeHead(200, { "Content-Type": "text/event-stream" })</code>.
+    Once you commit to SSE, the client expects frames — not a JSON error body.
+  </p>
+
+  <pre class="example">const auth = guard.checkAuth(req);
+if (!auth.ok) {
+  sendJsonError(res, auth.status, auth.error);  // 401
+  return;
+}
+
+// Only now open the stream
+res.writeHead(200, { "Content-Type": "text/event-stream", … });</pre>
+
+  <h2>Rate limiting</h2>
+
+  <p>
+    AI routes are expensive. A simple per-IP bucket (5 req/min in the practice
+    script) stops accidental loops and basic abuse. Return <code>429</code> as
+    pre-stream JSON — same as auth failures.
+  </p>
+
+  <p>
+    <code>practice/lib/triage-guard.mjs</code> holds auth + rate limit. Swap the
+    in-memory map for Redis when you run multiple server instances.
+  </p>
+
+  <h2>Sanitize what crosses the wire</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Server logs</th>
+        <th>Client sees</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Full OpenAI error, request id, stack</td>
+        <td>“Triage request failed” or your product copy</td>
+      </tr>
+      <tr>
+        <td>Which tool path ran, latency</td>
+        <td>UI phases only — same contract as Lesson 16</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">Browser                     /api/triage
+  │                               │
+  │── fetch + Bearer token ──────►│ checkAuth → checkRateLimit
+  │                               │   ↓ fail → 401/429 JSON
+  │                               │ streamTriageDocs() → SSE snapshots
+  │◄── data: { phase } ───────────│   ↓ catch → phase: "error" frame</pre>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Headers must be checked before SSE headers are sent.","false":"401 after SSE starts breaks the client parser."}'>
+    <h3>1. When should auth return 401?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Before the SSE stream opens</button>
+      <button data-correct="false">Inside the first SSE data frame</button>
+      <button data-correct="false">After OpenAI returns an error</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. App token authorizes your route — not OpenAI.","false":"The OpenAI key must never reach the browser."}'>
+    <h3>2. What does the Bearer token prove?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Caller may use your triage API route</button>
+      <button data-correct="false">Caller holds a valid OpenAI API key</button>
+      <button data-correct="false">Caller owns the vector store files</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. HTTP status first — then parse SSE frames.","false":"Always call readSseStream — check res.ok first."}'>
+    <h3>3. How should fetch handle 429?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Read JSON error when res.ok is false</button>
+      <button data-correct="false">Parse the body as SSE snapshots</button>
+      <button data-correct="false">Retry immediately without backoff</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>20-minute win:</strong> same triage feature, guarded route.</p>
+    <ol>
+      <li>Add to <code>.env</code>: <code>TRIAGE_API_SECRET=dev-secret</code> (or any string)</li>
+      <li>Run: <code>node practice/0022-production-hardening.mjs</code></li>
+      <li>Open <code>http://localhost:3456</code></li>
+      <li>Clear the token field — click <strong>Ask live backlog</strong> → expect <code>HTTP 401</code></li>
+      <li>Set token to <code>dev-secret</code> — both buttons work as in Lesson 21</li>
+      <li>Click <strong>Spam (rate limit)</strong> — sixth request hits <code>HTTP 429</code></li>
+      <li>Read <code>practice/lib/triage-guard.mjs</code> — find where checks run before SSE</li>
+      <li>Compare <code>triage-hardening-demo.html</code> vs <code>triage-docs-demo.html</code> — find the <code>!res.ok</code> branch</li>
+      <li>Sketch how this maps to a Next.js <code>route.ts</code> middleware or layout auth</li>
+    </ol>
+    <p>
+      Your capstone is now ship-shaped at the route level. Next: cross-provider
+      comparison (how OpenAI primitives map to Anthropic and Gemini) or
+      multi-turn conversation state on the same triage assistant.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://nextjs.org/docs/app/building-your-application/routing/route-handlers">Next.js Route Handlers</a> ·
+    <a href="https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html">OWASP REST Security Cheat Sheet</a>
+    (auth and rate-limiting patterns for HTTP APIs).
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0021-triage-with-file-search.html">Lesson 21 — Triage with File Search</a> ·
+      Reference: <a href="../reference/production-hardening.html">Production Hardening</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

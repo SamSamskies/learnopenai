@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Production Hardening — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Production Hardening</h1>
+  <p class="subtitle">Auth, rate limits, and two error channels for streaming AI routes.</p>
+
+  <h2>Two error channels</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>When</th>
+        <th>Transport</th>
+        <th>Client handles</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Before stream starts (auth, rate limit, bad body)</td>
+        <td>HTTP status + JSON <code>{ error }</code></td>
+        <td><code>if (!res.ok)</code> — no SSE parser</td>
+      </tr>
+      <tr>
+        <td>After stream started (OpenAI failure mid-run)</td>
+        <td>SSE snapshot <code>phase: "error"</code></td>
+        <td>Reducer branch on <code>phase</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Auth on the route</h2>
+  <pre class="example">// Server — never expose OPENAI_API_KEY to the browser
+const token = req.headers.authorization?.replace(/^Bearer /, "");
+if (token !== process.env.TRIAGE_API_SECRET) {
+  return Response.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+// Client — session cookie or short-lived app token, not the OpenAI key
+fetch("/api/triage", {
+  headers: { Authorization: `Bearer ${appToken}` },
+});</pre>
+
+  <h2>Rate limiting</h2>
+  <pre class="example">// Return 429 JSON before opening the SSE stream
+if (overLimit(clientIp)) {
+  return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
+}</pre>
+  <p>
+    In-memory buckets are fine for demos and single-instance deploys. Use Redis or
+    your edge provider for multi-instance production.
+  </p>
+
+  <h2>Sanitize errors</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Log (server)</th>
+        <th>Send (client)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Full OpenAI error + stack</td>
+        <td>Generic “Triage request failed”</td>
+      </tr>
+      <tr>
+        <td>Request id, user id, model</td>
+        <td><code>phase: "error"</code> message only</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Checklist</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Layer</th>
+        <th>Practice script</th>
+        <th>Production</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>OpenAI key</td>
+        <td><code>.env</code> on server</td>
+        <td>Secret manager / Vercel env</td>
+      </tr>
+      <tr>
+        <td>Route auth</td>
+        <td><code>TRIAGE_API_SECRET</code> Bearer</td>
+        <td>Session cookie or JWT from your auth</td>
+      </tr>
+      <tr>
+        <td>Rate limit</td>
+        <td><code>practice/lib/triage-guard.mjs</code></td>
+        <td>Edge / Redis / API gateway</td>
+      </tr>
+      <tr>
+        <td>Stream errors</td>
+        <td>SSE <code>phase: "error"</code></td>
+        <td>Same + observability on server</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0022-production-hardening.html">Lesson 22</a> ·
+      Capstone: <a href="../reference/capstone-pattern.html">capstone pattern</a> ·
+      SSE client: <a href="../reference/fetch-stream-client.html">fetch stream client</a>
+    </p>
+  </footer>
+</body>
+</html>

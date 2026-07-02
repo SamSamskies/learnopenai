@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feature Triage — Hardened Demo</title>
+  <style>
+    :root {
+      --text: #1a1a1a;
+      --muted: #555;
+      --accent: #10a37f;
+      --border: #ddd;
+      --bg: #fafafa;
+      --card: #fff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.55rem 1rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .panel {
+      margin-top: 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      min-height: 140px;
+    }
+    .phase {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    pre {
+      font-size: 0.8rem;
+      background: #f4f4f4;
+      padding: 0.65rem;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .card-fields dt { font-size: 0.72rem; color: var(--muted); margin-top: 0.5rem; }
+    .card-fields dd { font-weight: 500; }
+    .citations {
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .citations li { margin-top: 0.25rem; }
+    .error { color: #991b1b; }
+    .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Feature Triage (Hardened)</h1>
+  <p class="subtitle">Auth header + rate limit before SSE starts.</p>
+
+  <label for="token">API token (Bearer)</label>
+  <input id="token" type="password" placeholder="dev-secret" autocomplete="off" />
+
+  <div class="actions">
+    <button id="backlog" type="button">Ask live backlog</button>
+    <button id="docs" type="button" class="secondary">Ask roadmap doc</button>
+    <button id="spam" type="button" class="secondary">Spam (rate limit)</button>
+  </div>
+  <p class="hint">Wrong token → 401 JSON. Sixth click in a minute → 429 JSON.</p>
+
+  <div class="panel" id="panel">
+    <div class="phase" id="phase">idle</div>
+    <div id="content"><em>Set token, then try both paths.</em></div>
+  </div>
+
+  <script>
+    const tokenInput = document.getElementById("token");
+    const backlogBtn = document.getElementById("backlog");
+    const docsBtn = document.getElementById("docs");
+    const spamBtn = document.getElementById("spam");
+    const phaseEl = document.getElementById("phase");
+    const contentEl = document.getElementById("content");
+    let abortController = null;
+
+    const saved = localStorage.getItem("triageToken");
+    tokenInput.value = saved ?? "dev-secret";
+    tokenInput.addEventListener("change", () => {
+      localStorage.setItem("triageToken", tokenInput.value);
+    });
+
+    function render(state) {
+      const pathLabel = state.path ? ` · ${state.path}` : "";
+      phaseEl.textContent = state.phase + pathLabel;
+
+      if (state.error) {
+        contentEl.innerHTML = `<p class="error">${state.error}</p>`;
+        return;
+      }
+
+      if (state.phase === "routing") {
+        contentEl.innerHTML = "<p>Choosing tool…</p>";
+        return;
+      }
+
+      if (state.path === "backlog" && state.phase === "streaming-args") {
+        contentEl.innerHTML =
+          `<p>Calling <strong>${state.toolName}</strong>…</p>` +
+          `<pre>${state.argsPreview || "…"}</pre>`;
+        return;
+      }
+
+      if (state.path === "backlog" && state.phase === "running-handler") {
+        contentEl.innerHTML = "<p>Looking up live backlog…</p>";
+        return;
+      }
+
+      if (state.path === "backlog" && state.phase === "streaming-card") {
+        contentEl.innerHTML =
+          "<p>Streaming triage card…</p>" +
+          `<pre>${state.cardPreview || "…"}</pre>`;
+        return;
+      }
+
+      if (state.path === "backlog" && state.phase === "done" && state.card) {
+        const c = state.card;
+        contentEl.innerHTML = `
+          <dl class="card-fields">
+            <dt>Feature</dt><dd>${c.feature_title}</dd>
+            <dt>Status</dt><dd>${c.current_status}</dd>
+            <dt>Priority</dt><dd>${c.priority}</dd>
+            <dt>Recommendation</dt><dd>${c.recommendation}</dd>
+          </dl>`;
+        return;
+      }
+
+      if (state.path === "docs" && state.phase === "searching-docs") {
+        const queries = state.searchQueries?.length
+          ? `<pre>${state.searchQueries.join("\n")}</pre>`
+          : "";
+        contentEl.innerHTML =
+          "<p>Searching uploaded documents…</p>" + queries;
+        return;
+      }
+
+      if (state.path === "docs" && state.phase === "streaming-answer") {
+        contentEl.innerHTML =
+          "<p>Streaming answer…</p>" +
+          `<pre>${state.answerPreview || "…"}</pre>`;
+        return;
+      }
+
+      if (state.path === "docs" && state.phase === "done") {
+        const cites = (state.citations ?? [])
+          .map((c) => `<li>${c.filename}</li>`)
+          .join("");
+        contentEl.innerHTML = `
+          <p>${state.answer ?? state.answerPreview}</p>
+          ${cites ? `<ul class="citations"><li><strong>Sources</strong></li>${cites}</ul>` : ""}`;
+        return;
+      }
+
+      contentEl.innerHTML = "<em>Waiting…</em>";
+    }
+
+    async function readSseStream(response, onSnapshot) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+
+        for (const chunk of chunks) {
+          const line = chunk.trim();
+          if (!line.startsWith("data: ")) continue;
+          onSnapshot(JSON.parse(line.slice(6)));
+        }
+      }
+    }
+
+    async function start(mode) {
+      abortController?.abort();
+      abortController = new AbortController();
+      backlogBtn.disabled = true;
+      docsBtn.disabled = true;
+      spamBtn.disabled = true;
+      render({ phase: "idle" });
+
+      try {
+        const response = await fetch(`/api/triage?mode=${mode}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${tokenInput.value}`,
+          },
+          signal: abortController.signal,
+        });
+
+        const contentType = response.headers.get("content-type") ?? "";
+
+        if (!response.ok) {
+          const body = contentType.includes("application/json")
+            ? await response.json()
+            : { error: `HTTP ${response.status}` };
+          render({
+            phase: "error",
+            error: `HTTP ${response.status}: ${body.error ?? "Request failed"}`,
+          });
+          return;
+        }
+
+        if (!response.body) {
+          throw new Error("No response body");
+        }
+
+        await readSseStream(response, (state) => {
+          render(state);
+          if (state.phase === "done" || state.phase === "error") {
+            backlogBtn.disabled = false;
+            docsBtn.disabled = false;
+            spamBtn.disabled = false;
+          }
+        });
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        render({
+          phase: "error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        backlogBtn.disabled = false;
+        docsBtn.disabled = false;
+        spamBtn.disabled = false;
+      }
+    }
+
+    async function spamRateLimit() {
+      for (let i = 0; i < 6; i += 1) {
+        await start("backlog");
+      }
+    }
+
+    backlogBtn.addEventListener("click", () => start("backlog"));
+    docsBtn.addEventListener("click", () => start("docs"));
+    spamBtn.addEventListener("click", () => spamRateLimit());
+  </script>
+</body>
+</html>
