@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capstone Pattern — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Capstone Pattern</h1>
+  <p class="subtitle">Stream tool call → handler → stream structured card — Responses API.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>API shape</th>
+        <th>UI shows</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1 — tool call</td>
+        <td><code>create({ stream: true, tools })</code></td>
+        <td>Tool name + args streaming in</td>
+      </tr>
+      <tr>
+        <td>Between</td>
+        <td>Your handler (sync is fine)</td>
+        <td>“Running lookup…”</td>
+      </tr>
+      <tr>
+        <td>2 — structured answer</td>
+        <td><code>stream({ previous_response_id, function_call_output, text.format })</code></td>
+        <td>Raw JSON preview → typed card at end</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">// Turn 2 — chain state + structured output
+const turn2 = client.responses.stream({
+  previous_response_id: turn1ResponseId,
+  input: [{ type: "function_call_output", call_id, output: toolResult }],
+  text: { format: zodTextFormat(TriageCard, "triage_card") },
+});
+const card = (await turn2.finalResponse()).output_parsed;</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>When to add</th>
+        <th>Lesson</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Platform runs search/files</td>
+        <td><a href="../lessons/0008-built-in-tools.html">8 — Built-in Tools</a></td>
+      </tr>
+      <tr>
+        <td>External vendor MCP server</td>
+        <td><a href="../lessons/0014-remote-mcp.html">14 — Remote MCP</a></td>
+      </tr>
+      <tr>
+        <td>Hard reasoning / eval failures</td>
+        <td><a href="../lessons/0013-reasoning-models.html">13 — Reasoning Models</a></td>
+      </tr>
+      <tr>
+        <td>Repeated system prefix cost</td>
+        <td><a href="../lessons/0011-prompt-caching.html">11 — Prompt Caching</a></td>
+      </tr>
+      <tr>
+        <td>Long jobs past HTTP timeout</td>
+        <td><a href="../lessons/0012-background-mode.html">12 — Background Mode</a></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0015-capstone-feature-triage.html">Lesson 15 — Capstone</a> ·
+      Practice: <code>practice/0015-capstone-feature-triage.mjs</code>
+    </p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 15 — Capstone: Feature Triage</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 15 · ~20 minutes</div>
+  <h1>Capstone: Feature Triage</h1>
+
+  <p class="epigraph">
+    Fourteen lessons of parts.
+    One product-shaped flow.
+  </p>
+
+  <p>
+    Your mission success criteria include shipping a small feature with
+    <strong>streaming UI</strong>, <strong>tool calls</strong>, and
+    <strong>structured JSON output</strong>. This lesson wires all three into
+  one flow — the same shape most AI product surfaces use.
+  </p>
+
+  <h2>The feature</h2>
+
+  <p>
+    A PM asks: <em>“Users keep asking for dark mode — is it on our roadmap?”</em>
+    Your assistant should:
+  </p>
+
+  <ol>
+    <li>Stream a <strong>tool call</strong> to your backlog API (Lesson 9)</li>
+    <li>Run your <strong>handler</strong> with real data (Lesson 7)</li>
+    <li>Stream a <strong>structured triage card</strong> the UI can render (Lesson 6)</li>
+    <li>Chain turns with <code>previous_response_id</code> (Lesson 10)</li>
+  </ol>
+
+  <p>
+    See <a href="../reference/capstone-pattern.html">capstone pattern reference</a>.
+  </p>
+
+  <h2>Architecture</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>What happens</th>
+        <th>User sees</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1</strong> — stream tool call</td>
+        <td>Model picks <code>get_feature_status</code>; args stream in</td>
+        <td>“Calling get_feature_status…” + live JSON args</td>
+      </tr>
+      <tr>
+        <td><strong>Between</strong></td>
+        <td>Your code queries the backlog (mock DB in practice)</td>
+        <td>Short “looking up…” state</td>
+      </tr>
+      <tr>
+        <td><strong>2</strong> — stream structured card</td>
+        <td>Model returns Zod-validated <code>TriageCard</code> JSON</td>
+        <td>Raw JSON preview → typed card fields at end</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Turn 2 — the new combination</h2>
+
+  <p>
+    You have streamed tool calls (Lesson 9) and streamed structured output
+    (Lesson 6) separately. Turn 2 combines both <em>and</em> chains state:
+  </p>
+
+  <pre class="example">const turn2 = client.responses.stream({
+  model: "gpt-4.1-nano",
+  previous_response_id: turn1ResponseId,
+  instructions: "Return a triage card grounded in the tool result.",
+  input: [{
+    type: "function_call_output",
+    call_id: callId,
+    output: toolResult,
+  }],
+  text: { format: zodTextFormat(TriageCard, "triage_card") },
+});
+
+for await (const event of turn2) {
+  if (event.type === "response.output_text.delta") {
+    jsonBuffer += event.delta; // optional live preview
+  }
+}
+
+const card = (await turn2.finalResponse()).output_parsed;
+// → { feature_title, current_status, priority, recommendation }</pre>
+
+  <div class="callout warn">
+    <strong>Still don't parse partial JSON</strong><br>
+    Deltas are raw JSON text. Accumulate for preview; render typed fields only
+    after <code>finalResponse()</code> — same rule as Lesson 6.
+  </div>
+
+  <h2>What you already know — when to layer it in</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Need</th>
+        <th>Add from</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>OpenAI runs web search / files</td>
+        <td><a href="0008-built-in-tools.html">Lesson 8</a> — one request, no handler</td>
+      </tr>
+      <tr>
+        <td>External vendor's tool server</td>
+        <td><a href="0014-remote-mcp.html">Lesson 14</a> — <code>type: "mcp"</code></td>
+      </tr>
+      <tr>
+        <td>Cheap model fails evals</td>
+        <td><a href="0013-reasoning-models.html">Lesson 13</a> — upgrade + measure</td>
+      </tr>
+      <tr>
+        <td>Big repeated system prompt</td>
+        <td><a href="0011-prompt-caching.html">Lesson 11</a></td>
+      </tr>
+      <tr>
+        <td>Job outlives HTTP timeout</td>
+        <td><a href="0012-background-mode.html">Lesson 12</a></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The capstone uses <strong>custom functions + nano</strong> on purpose — you
+    own the handler and the schema. Production features pick the right layer per
+    capability, not everything at once.
+  </p>
+
+  <h2>Frontend mapping</h2>
+
+  <p>
+    In React (or any UI), each phase maps to state:
+  </p>
+
+  <pre class="example">toolPhase: "idle" | "streaming-args" | "running-handler" | "streaming-card" | "done"
+toolName: string | null
+argsPreview: string          // from function_call_arguments.delta
+card: TriageCard | null       // set once after finalResponse()</pre>
+
+  <p>
+    The official
+    <a href="https://github.com/openai/openai-responses-starter-app">Responses starter app</a>
+    shows a fuller chat UI — use it when you move from terminal practice to a
+    shipped surface.
+  </p>
+
+  <div class="quiz" id="quiz1">
+    <h3>1. Why structured output on turn 2, not turn 1?</h3>
+    <div class="options">
+      <button data-correct="false">The API forbids schemas with tools</button>
+      <button data-correct="true">Turn 1 is for the tool call; turn 2 answers with typed JSON</button>
+      <button data-correct="false">Structured output only works on gpt-5</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2">
+    <h3>2. What does the UI render from turn 2?</h3>
+    <div class="options">
+      <button data-correct="false">Each delta as a separate field</button>
+      <button data-correct="true">output_parsed after the stream completes</button>
+      <button data-correct="false">function_call_output directly</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3">
+    <h3>3. What chains turn 1 to turn 2?</h3>
+    <div class="options">
+      <button data-correct="true">previous_response_id from turn 1</button>
+      <button data-correct="false">Resending the full message history manually</button>
+      <button data-correct="false">A separate thread ID per tool</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>20-minute win:</strong> one end-to-end triage flow in the terminal.</p>
+    <ol>
+      <li>Run: <code>node practice/0015-capstone-feature-triage.mjs</code></li>
+      <li>Watch Phase 1 — tool name and args stream in</li>
+      <li>Watch Phase 2 — JSON streams, then typed card fields print</li>
+      <li>Sketch the React state machine for the three UI phases</li>
+      <li>Pick one layer to add next (built-in search? MCP? reasoning?) and why</li>
+    </ol>
+    <p>
+      You have the core Responses API primitives for an AI product feature.
+      Next step: build the actual UI — or extend the curriculum with Agents SDK
+      orchestration when multi-step workflows outgrow hand-rolled loops.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://github.com/openai/openai-responses-starter-app">OpenAI Responses starter app</a>
+    (full chat UI reference) ·
+    <a href="https://platform.openai.com/docs/guides/function-calling">Function calling</a> ·
+    <a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0014-remote-mcp.html">Lesson 14 — Remote MCP</a> ·
+      Reference: <a href="../reference/capstone-pattern.html">Capstone Pattern</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
