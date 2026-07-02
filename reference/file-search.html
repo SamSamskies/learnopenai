@@ -136,6 +136,77 @@ msg?.content[0].annotations;  // [{ type: "file_citation", filename, file_id, in
     </tbody>
   </table>
 
+  <h2>Pricing</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Price</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Storage</td>
+        <td>$0.10 / GB / day</td>
+        <td>First 1 GB free</td>
+      </tr>
+      <tr>
+        <td>Tool calls</td>
+        <td>$2.50 / 1k calls</td>
+        <td>Per <code>file_search_call</code></td>
+      </tr>
+      <tr>
+        <td>Model tokens</td>
+        <td>Model rate</td>
+        <td>Question + retrieved chunks + answer</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="font-size: 0.95rem;">
+    Compare: <code>web_search</code> is ~$10 / 1k calls — file search is cheaper
+    per call but adds storage. Custom RAG can win at scale; hosted wins when you
+    want zero retrieval infra. Source:
+    <a href="https://platform.openai.com/docs/pricing">pricing</a>.
+  </p>
+
+  <h2>Model choice</h2>
+
+  <p style="font-size: 0.95rem;">
+    Platform handles retrieval. Model handles query formulation, reading chunks,
+    answering. Default: <code>gpt-4.1-mini</code>.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Mini enough</th>
+        <th>Step up</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Structured docs, factual lookups</td>
+        <td>Dense specs, contracts, legal</td>
+      </tr>
+      <tr>
+        <td>Single-source, clear answers</td>
+        <td>Multi-hop across many files</td>
+      </tr>
+      <tr>
+        <td>User verifies via citations</td>
+        <td>High-stakes faithfulness to source</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">Start gpt-4.1-mini → test real docs + questions
+  → miss nuance / wrong sections / mash sources?
+  → bump model before rebuilding RAG
+  → tune max_num_results and doc quality first</pre>
+
   <h2>UI mapping</h2>
   <table>
     <thead>

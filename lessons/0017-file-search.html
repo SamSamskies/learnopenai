@@ -103,11 +103,57 @@ const response = await client.responses.create({
 });</pre>
 
   <div class="callout warn">
-    <strong>Cost and reuse</strong><br>
-    Vector stores have storage billing. For practice, save the
-    <code>vector_store_id</code> in <code>.env</code> and reuse it — the
-    practice script does this automatically after the first run.
+    <strong>Pricing</strong> (<a href="https://platform.openai.com/docs/pricing">docs</a>)<br>
+    Two charges on top of normal model tokens:<br>
+    <strong>Storage</strong> — $0.10 / GB / day (first 1 GB free).<br>
+    <strong>Tool calls</strong> — $2.50 / 1k <code>file_search_call</code>s (~$0.0025 each).<br>
+    Tokens still bill separately — question, retrieved chunks, and answer all count.<br>
+    For practice, save <code>FILE_SEARCH_VECTOR_STORE_ID</code> in <code>.env</code> and reuse it.
+    A tiny roadmap doc stays under the free storage tier.
   </div>
+
+  <h2>Model choice</h2>
+
+  <p>
+    Retrieval (chunking, embedding, search) runs on OpenAI's platform. Your model
+    decides <em>whether</em> to search, formulates queries, reads retrieved chunks,
+    and writes the answer. <code>gpt-4.1-mini</code> is the right default for
+    simple doc Q&amp;A — the practice script uses it.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th><code>gpt-4.1-mini</code> is enough when…</th>
+        <th>Step up (<code>gpt-4.1</code>, <code>gpt-5</code>) when…</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Short, well-structured docs</td>
+        <td>Dense technical or legal content</td>
+      </tr>
+      <tr>
+        <td>Factual lookups (status, dates, names)</td>
+        <td>Multi-hop questions across many chunks</td>
+      </tr>
+      <tr>
+        <td>One clear answer per question</td>
+        <td>Synthesis across conflicting sources</td>
+      </tr>
+      <tr>
+        <td>Low stakes — user can verify citations</td>
+        <td>High accuracy bar — paraphrase errors are costly</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Rule of thumb: start with mini on your real docs and questions. If answers
+    miss nuance or mash sources, bump the model before rebuilding RAG. Tune
+    <code>max_num_results</code> and doc quality first — bad chunks sent to a
+    bigger model still produce bad answers.
+  </p>
 
   <h2>What's in the response</h2>
 
