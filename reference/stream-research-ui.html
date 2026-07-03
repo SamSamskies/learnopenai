@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Streaming UI — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Research Streaming UI</h1>
+  <p class="subtitle">One-turn <code>web_search</code> → UI phase snapshots over SSE.</p>
+
+  <h2>Phase machine</h2>
+  <pre class="example">idle → searching → streaming-answer → done
+                              ↘ error</pre>
+
+  <p>
+    Simpler than triage (no handler turn, no structured card yet). Same transport
+    as <a href="fetch-stream-client.html">fetch stream client</a>.
+  </p>
+
+  <h2>State shape</h2>
+  <pre class="example">type ResearchPhase =
+  | "idle"
+  | "searching"
+  | "streaming-answer"
+  | "done"
+  | "error";
+
+type ResearchUIState = {
+  phase: ResearchPhase;
+  answerPreview: string;
+  answer: string | null;
+  citations: { title: string; url: string }[];
+  searched: boolean;
+  error: string | null;
+};</pre>
+
+  <h2>Event → state (<code>lib/stream-research.ts</code>)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Stream event</th>
+        <th>State update</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>output_item.added</code> (<code>web_search_call</code>)</td>
+        <td><code>phase: "searching"</code>, <code>searched: true</code></td>
+      </tr>
+      <tr>
+        <td><code>output_text.delta</code></td>
+        <td><code>phase: "streaming-answer"</code>, append <code>answerPreview</code></td>
+      </tr>
+      <tr>
+        <td><code>response.completed</code></td>
+        <td><code>answer</code>, <code>citations</code> from <code>url_citation</code> annotations, <code>phase: "done"</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>What to render</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>UI</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>searching</code></td>
+        <td>“Searching the web…”</td>
+      </tr>
+      <tr>
+        <td><code>streaming-answer</code></td>
+        <td>Live answer text (<code>answerPreview</code>)</td>
+      </tr>
+      <tr>
+        <td><code>done</code></td>
+        <td>Final <code>answer</code> + citation link list</td>
+      </tr>
+      <tr>
+        <td><code>error</code></td>
+        <td>Error message; re-enable Send</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Route sketch</h2>
+  <pre class="example">export const runtime = "nodejs";
+
+export async function POST(req: Request) {
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (state) =>
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${JSON.stringify(state)}\n\n`)
+        );
+      await streamResearch(message, send);
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}</pre>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0027-research-assistant-streaming-ui.html">Lesson 27</a> ·
+      <a href="research-assistant.html">Research Assistant</a> ·
+      <a href="fetch-stream-client.html">Fetch Stream Client</a>
+    </p>
+  </footer>
+</body>
+</html>

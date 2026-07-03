@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 27 — Research Streaming UI</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 27 · ~35 minutes</div>
+  <h1>Research Streaming UI</h1>
+
+  <p class="epigraph">
+    Lesson 26 proved the loop in curl.
+    Now the browser watches it live.
+  </p>
+
+  <p>
+    <a href="0026-research-assistant-api.html">Lesson 26</a> returned JSON in one
+    shot. Users expect to <em>see</em> search and answer arrive — same pattern you
+    shipped in the triage capstone via
+    <a href="0016-streaming-ui-state-machine.html">Lesson 16</a> and
+    <a href="0020-fetch-stream-client.html">Lesson 20</a>. This lesson converts
+    <code>POST /api/research</code> to SSE UI snapshots and enables Send on the shell.
+  </p>
+
+  <h2>What changes</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Lesson 26</th>
+        <th>This lesson</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>One JSON response at the end</td>
+        <td>SSE frames: <code>data: { phase, … }\n\n</code></td>
+      </tr>
+      <tr>
+        <td>Logic inline in <code>route.ts</code></td>
+        <td><code>lib/stream-research.ts</code> maps OpenAI events → UI state</td>
+      </tr>
+      <tr>
+        <td>Test with <code>curl</code></td>
+        <td>Browser <code>fetch</code> + stream reader + <code>useReducer</code></td>
+      </tr>
+      <tr>
+        <td>Send button disabled</td>
+        <td>Send posts the question, renders phases live</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Quick reference:
+    <a href="../reference/stream-research-ui.html">research streaming UI</a> ·
+    <a href="../reference/fetch-stream-client.html">fetch stream client</a>.
+  </p>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">React client                  Next.js route              OpenAI
+  │                                  │                        │
+  │── fetch POST /api/research ─────►│ streamResearch()       │
+  │    { message }                   │   stream: true         │
+  │                                  │───────────────────────►│ web_search
+  │◄── data: { phase: searching } ─│◄── web_search_call ────│
+  │◄── data: { phase: streaming… } │◄── output_text.delta ──│
+  │◄── data: { phase: done, … } ────│◄── response.completed ─│
+  │    dispatch(snapshot)            │                        │</pre>
+
+  <p>
+    The client never sees raw OpenAI events — only your
+    <strong>UI phase snapshots</strong>. The reducer merges each frame; it does
+    not interpret the API.
+  </p>
+
+  <h2>Research phase machine</h2>
+
+  <p>
+    One-turn <code>web_search</code> is simpler than triage's two-turn loop:
+  </p>
+
+  <pre class="example">idle → searching → streaming-answer → done
+                              ↘ error</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>User sees</th>
+        <th>Triggered by</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>searching</code></td>
+        <td>“Searching the web…”</td>
+        <td><code>output_item.added</code> with <code>web_search_call</code></td>
+      </tr>
+      <tr>
+        <td><code>streaming-answer</code></td>
+        <td>Answer text growing live</td>
+        <td><code>output_text.delta</code></td>
+      </tr>
+      <tr>
+        <td><code>done</code></td>
+        <td>Final answer + citation links</td>
+        <td><code>response.completed</code> — extract <code>url_citation</code> annotations</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    If the model skips search, you may never hit <code>searching</code> — the
+    first frame might be <code>streaming-answer</code>. That is fine.
+  </p>
+
+  <h2>1. Stream helper — <code>lib/stream-research.ts</code></h2>
+
+  <p>
+    Port the shape from <code>practice/lib/stream-triage-docs.mjs</code> (docs path)
+    — built-in tool, one turn, no handler.
+  </p>
+
+  <pre class="example">import { openai } from "@/lib/openai";
+
+export type Citation = { title: string; url: string };
+
+export type ResearchPhase =
+  | "idle"
+  | "searching"
+  | "streaming-answer"
+  | "done"
+  | "error";
+
+export type ResearchUIState = {
+  phase: ResearchPhase;
+  answerPreview: string;
+  answer: string | null;
+  citations: Citation[];
+  searched: boolean;
+  error: string | null;
+};
+
+export function createResearchState(
+  overrides: Partial&lt;ResearchUIState&gt; = {}
+): ResearchUIState {
+  return {
+    phase: "idle",
+    answerPreview: "",
+    answer: null,
+    citations: [],
+    searched: false,
+    error: null,
+    ...overrides,
+  };
+}
+
+function extractUrlCitations(response: Awaited&lt;
+  ReturnType&lt;typeof openai.responses.create&gt;
+&gt;): Citation[] {
+  const message = response.output.find((item) => item.type === "message");
+  const textContent = message?.content?.find(
+    (part) => part.type === "output_text"
+  );
+  return (textContent?.annotations ?? [])
+    .filter((note) => note.type === "url_citation")
+    .map((note) => ({ title: note.title ?? note.url, url: note.url }));
+}
+
+export async function streamResearch(
+  message: string,
+  onSnapshot: (state: ResearchUIState) => void
+) {
+  const state = createResearchState({ phase: "searching" });
+  onSnapshot(state);
+
+  const stream = await openai.responses.create({
+    model: "gpt-5-mini",
+    instructions:
+      "You are a research assistant for solo builders. Answer clearly and concisely. Cite sources when you use web search.",
+    input: message,
+    tools: [{ type: "web_search", search_context_size: "low" }],
+    stream: true,
+  });
+
+  for await (const event of stream) {
+    if (
+      event.type === "response.output_item.added" &&
+      event.item.type === "web_search_call"
+    ) {
+      state.searched = true;
+      state.phase = "searching";
+      onSnapshot({ ...state });
+    }
+
+    if (event.type === "response.output_text.delta") {
+      state.phase = "streaming-answer";
+      state.answerPreview += event.delta;
+      onSnapshot({ ...state });
+    }
+
+    if (event.type === "response.completed") {
+      state.answer = event.response.output_text;
+      state.citations = extractUrlCitations(event.response);
+      state.searched = event.response.output.some(
+        (item) => item.type === "web_search_call"
+      );
+      state.phase = "done";
+      onSnapshot({ ...state });
+    }
+  }
+}</pre>
+
+  <div class="callout">
+    <strong>Citations at <code>done</code>, not during streaming.</strong><br>
+    <code>url_citation</code> annotations arrive on the final message. Stream
+    <code>answerPreview</code> for live text; render citation links only when
+    <code>phase === "done"</code> — same rule as Lesson 26.
+  </div>
+
+  <h2>2. SSE route — replace JSON response</h2>
+
+  <p>
+    Swap the blocking <code>NextResponse.json</code> for a
+    <code>ReadableStream</code>. Set <code>export const runtime = "nodejs"</code>
+    — the OpenAI SDK needs Node, not Edge.
+  </p>
+
+  <pre class="example">// app/api/research/route.ts
+import {
+  createResearchState,
+  streamResearch,
+} from "@/lib/stream-research";
+
+export const runtime = "nodejs";
+
+export async function POST(req: Request) {
+  const body = await req.json();
+  const message = body?.message;
+
+  if (typeof message !== "string" || !message.trim()) {
+    return Response.json({ error: "message is required" }, { status: 400 });
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      const send = (state: Parameters&lt;typeof streamResearch&gt;[1] extends (
+        s: infer S
+      ) => void
+        ? S
+        : never) =&gt;
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(state)}\n\n`)
+        );
+
+      try {
+        await streamResearch(message.trim(), send);
+      } catch (err) {
+        send(
+          createResearchState({
+            phase: "error",
+            error: err instanceof Error ? err.message : String(err),
+          })
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}</pre>
+
+  <p>
+    Your Lesson 26 <code>curl</code> test no longer returns one JSON blob — that
+    is expected. The browser client is the test surface now.
+  </p>
+
+  <h2>3. Client — <code>components/ResearchChat.tsx</code></h2>
+
+  <p>
+    Keep <code>app/page.tsx</code> as a thin server shell; put interactivity in a
+    client component. Pattern from
+    <a href="../reference/fetch-stream-client.html">fetch stream client reference</a>:
+  </p>
+
+  <pre class="example">"use client";
+
+import { useReducer, useRef } from "react";
+import {
+  createResearchState,
+  type ResearchUIState,
+} from "@/lib/stream-research";
+
+function reducer(_: ResearchUIState, patch: ResearchUIState) {
+  return patch;
+}
+
+async function readSseStream(
+  res: Response,
+  onFrame: (state: ResearchUIState) => void
+) {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.trim();
+      if (!line.startsWith("data: ")) continue;
+      onFrame(JSON.parse(line.slice(6)));
+    }
+  }
+}
+
+export function ResearchChat() {
+  const [state, dispatch] = useReducer(
+    reducer,
+    createResearchState()
+  );
+  const abortRef = useRef&lt;AbortController | null&gt;(null);
+
+  async function onSubmit(e: React.FormEvent&lt;HTMLFormElement&gt;) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const message = new FormData(form).get("message");
+    if (typeof message !== "string" || !message.trim()) return;
+
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+
+    dispatch(createResearchState({ phase: "searching" }));
+
+    const res = await fetch("/api/research", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message.trim() }),
+      signal: abortRef.current.signal,
+    });
+
+    await readSseStream(res, dispatch);
+  }
+
+  const busy = state.phase !== "idle" && state.phase !== "done" && state.phase !== "error";
+
+  return (
+    &lt;&gt;
+      &lt;form onSubmit={onSubmit} className="flex flex-col gap-4"&gt;
+        &lt;textarea name="message" … disabled={busy} /&gt;
+        &lt;button type="submit" disabled={busy}&gt;Send&lt;/button&gt;
+      &lt;/form&gt;
+
+      {state.phase === "searching" && &lt;p&gt;Searching the web…&lt;/p&gt;}
+      {state.phase === "streaming-answer" && &lt;p&gt;{state.answerPreview}&lt;/p&gt;}
+      {state.phase === "done" && (
+        &lt;&gt;
+          &lt;p&gt;{state.answer}&lt;/p&gt;
+          &lt;ul&gt;
+            {state.citations.map((c) =&gt; (
+              &lt;li key={c.url}&gt;
+                &lt;a href={c.url} target="_blank" rel="noreferrer"&gt;
+                  {c.title}
+                &lt;/a&gt;
+              &lt;/li&gt;
+            ))}
+          &lt;/ul&gt;
+        &lt;/&gt;
+      )}
+      {state.phase === "error" && &lt;p&gt;{state.error}&lt;/p&gt;}
+    &lt;/&gt;
+  );
+}</pre>
+
+  <p>
+    Wire it in <code>app/page.tsx</code>: import <code>ResearchChat</code> and
+    replace the disabled form from Lesson 25.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Server maps events; client merges snapshots.","false":"Raw OpenAI events never cross the browser boundary."}'>
+    <h3>1. What does the React reducer receive?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">Raw OpenAI stream events from the API</button>
+      <button data-correct="true">UI phase snapshots from your route handler</button>
+      <button data-correct="false">The OpenAI API key for follow-up calls</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. web_search_call means the platform is searching.","false":"output_text.delta means text is streaming — search already happened or was skipped."}'>
+    <h3>2. Which event sets phase to searching?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">output_item.added with web_search_call</button>
+      <button data-correct="false">output_text.delta on the first chunk</button>
+      <button data-correct="false">response.completed at the end</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. Annotations arrive on the final message object.","false":"Inline URLs in answerPreview are not trustworthy during streaming."}'>
+    <h3>3. When do citation links become available?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">On the first output_text.delta frame</button>
+      <button data-correct="true">At done from url_citation annotations</button>
+      <button data-correct="false">Parsed from markdown in answerPreview</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>35-minute win:</strong> Send a question in the browser — watch search, streaming answer, citations.</p>
+    <ol>
+      <li>Create <code>lib/stream-research.ts</code> — phase machine + <code>streamResearch</code> (see above)</li>
+      <li>Rewrite <code>app/api/research/route.ts</code> — SSE stream, <code>runtime = "nodejs"</code></li>
+      <li>Create <code>components/ResearchChat.tsx</code> — <code>useReducer</code> + <code>fetch</code> parse loop</li>
+      <li>Update <code>app/page.tsx</code> — render <code>&lt;ResearchChat /&gt;</code></li>
+      <li><code>npm run dev</code> — ask a current-events question (e.g. “What changed in Next.js 15?”)</li>
+      <li>Confirm phases: searching → streaming text → citation links at done</li>
+      <li>Ask a timeless question (“What is HTTP?”) — note if <code>searched</code> stays false and searching is skipped</li>
+      <li>Compare with <code>practice/fixtures/triage-fetch-demo.html</code> — same SSE wire format, different phases</li>
+    </ol>
+    <p>
+      <strong>Next lesson (28):</strong> replace plain prose with a structured
+      <code>ResearchBrief</code> — Zod schema + <code>responses.parse()</code> for a typed summary card.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses</a> ·
+    <a href="https://developer.mozilla.org/en-US/docs/Web/API/Streams_API/Using_readable_streams">MDN — Using readable streams</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0026-research-assistant-api.html">Lesson 26 — Research API</a> ·
+      Reference: <a href="../reference/stream-research-ui.html">Research Streaming UI</a> ·
+      Next: Lesson 28 — Structured brief ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

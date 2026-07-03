@@ -24,6 +24,7 @@ Responses API, streaming, tool calling, structured outputs, image generation, fi
 - **Stack:** Next.js App Router, TypeScript, Zod, OpenAI Node SDK. App lives in `research-assistant/`.
 - **Lesson arc:** One vertical slice per lesson — scaffold → API → streaming UI → structured brief → threads → file search → hardening.
 - **Reuse:** Port patterns from `practice/lib/` (stream helpers, triage guard) rather than relearning from scratch.
+- **Streaming client (Lesson 27+):** Hand-rolled `fetch` + SSE parse loop + `useReducer` for now — learn the raw pattern first. Refactor to Vercel AI SDK `useChat` after the capstone ships (not during Lessons 27–31). React Query deferred for non-streaming state (threads, session list) in a later pass.
 
 ## Preferences
 
