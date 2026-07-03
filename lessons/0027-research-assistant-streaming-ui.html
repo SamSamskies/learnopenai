@@ -44,7 +44,7 @@
       </tr>
       <tr>
         <td>Test with <code>curl</code></td>
-        <td>Browser <code>fetch</code> + stream reader + <code>useReducer</code></td>
+        <td>Browser <code>fetchEventSource</code> + <code>useState</code></td>
       </tr>
       <tr>
         <td>Send button disabled</td>
@@ -69,12 +69,13 @@
   │◄── data: { phase: searching } ─│◄── web_search_call ────│
   │◄── data: { phase: streaming… } │◄── output_text.delta ──│
   │◄── data: { phase: done, … } ────│◄── response.completed ─│
-  │    dispatch(snapshot)            │                        │</pre>
+  │    setState(snapshot)             │                        │</pre>
 
   <p>
     The client never sees raw OpenAI events — only your
-    <strong>UI phase snapshots</strong>. The reducer merges each frame; it does
-    not interpret the API.
+    <strong>UI phase snapshots</strong>. Each SSE frame is a full
+    <code>ResearchUIState</code> object — replace React state on every frame; the
+    client does not interpret the API.
   </p>
 
   <h2>Research phase machine</h2>
@@ -118,16 +119,15 @@
     first frame might be <code>streaming-answer</code>. That is fine.
   </p>
 
-  <h2>1. Stream helper — <code>lib/stream-research.ts</code></h2>
+  <h2>1. UI state — <code>lib/research-state.ts</code></h2>
 
   <p>
-    Port the shape from <code>practice/lib/stream-triage-docs.mjs</code> (docs path)
-    — built-in tool, one turn, no handler.
+    Types and <code>createResearchState</code> live in a client-safe module — no
+    OpenAI imports. The client component imports from here; the stream helper
+    imports from both this file and <code>lib/openai.ts</code>.
   </p>
 
-  <pre class="example">import { openai } from "@/lib/openai";
-
-export type Citation = { title: string; url: string };
+  <pre class="example">export type Citation = { title: string; url: string };
 
 export type ResearchPhase =
   | "idle"
@@ -157,11 +157,23 @@ export function createResearchState(
     error: null,
     ...overrides,
   };
-}
+}</pre>
 
-function extractUrlCitations(response: Awaited&lt;
-  ReturnType&lt;typeof openai.responses.create&gt;
-&gt;): Citation[] {
+  <h2>2. Stream helper — <code>lib/stream-research.ts</code></h2>
+
+  <p>
+    Port the shape from <code>practice/lib/stream-triage-docs.mjs</code> (docs path)
+    — built-in tool, one turn, no handler. Mark server-only so the client cannot
+    import it.
+  </p>
+
+  <pre class="example">import "server-only";
+
+import type { Response } from "openai/resources/responses/responses";
+import { openai } from "@/lib/openai";
+import { createResearchState, type ResearchUIState } from "@/lib/research-state";
+
+function extractUrlCitations(response: Response): Citation[] {
   const message = response.output.find((item) => item.type === "message");
   const textContent = message?.content?.find(
     (part) => part.type === "output_text"
@@ -216,13 +228,22 @@ export async function streamResearch(
 }</pre>
 
   <div class="callout">
+    <strong>Type the completed response, not <code>create()</code>'s return type.</strong><br>
+    <code>responses.create</code> returns <code>Stream | Response</code> depending on
+    <code>stream</code>. Citation extraction runs on
+    <code>event.response</code> at <code>response.completed</code> — always a
+    <code>Response</code> — so import that type directly instead of inferring from
+    <code>ReturnType&lt;typeof openai.responses.create&gt;</code>.
+  </div>
+
+  <div class="callout">
     <strong>Citations at <code>done</code>, not during streaming.</strong><br>
     <code>url_citation</code> annotations arrive on the final message. Stream
     <code>answerPreview</code> for live text; render citation links only when
     <code>phase === "done"</code> — same rule as Lesson 26.
   </div>
 
-  <h2>2. SSE route — replace JSON response</h2>
+  <h2>3. SSE route — replace JSON response</h2>
 
   <p>
     Swap the blocking <code>NextResponse.json</code> for a
@@ -231,10 +252,8 @@ export async function streamResearch(
   </p>
 
   <pre class="example">// app/api/research/route.ts
-import {
-  createResearchState,
-  streamResearch,
-} from "@/lib/stream-research";
+import { createResearchState } from "@/lib/research-state";
+import { streamResearch } from "@/lib/stream-research";
 
 export const runtime = "nodejs";
 
@@ -283,53 +302,26 @@ export async function POST(req: Request) {
     is expected. The browser client is the test surface now.
   </p>
 
-  <h2>3. Client — <code>components/ResearchChat.tsx</code></h2>
+  <h2>4. Client — <code>components/ResearchChat.tsx</code></h2>
 
   <p>
     Keep <code>app/page.tsx</code> as a thin server shell; put interactivity in a
-    client component. Pattern from
-    <a href="../reference/fetch-stream-client.html">fetch stream client reference</a>:
+    client component. Install
+    <code>@microsoft/fetch-event-source</code> — it handles spec-compliant SSE
+    parsing over <code>fetch</code> (including POST), which native
+    <code>EventSource</code> cannot do:
   </p>
+
+  <pre class="example">npm install @microsoft/fetch-event-source</pre>
 
   <pre class="example">"use client";
 
-import { useReducer, useRef } from "react";
-import {
-  createResearchState,
-  type ResearchUIState,
-} from "@/lib/stream-research";
-
-function reducer(_: ResearchUIState, patch: ResearchUIState) {
-  return patch;
-}
-
-async function readSseStream(
-  res: Response,
-  onFrame: (state: ResearchUIState) => void
-) {
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) {
-      const line = frame.trim();
-      if (!line.startsWith("data: ")) continue;
-      onFrame(JSON.parse(line.slice(6)));
-    }
-  }
-}
+import { fetchEventSource } from "@microsoft/fetch-event-source";
+import { useRef, useState } from "react";
+import { createResearchState } from "@/lib/research-state";
 
 export function ResearchChat() {
-  const [state, dispatch] = useReducer(
-    reducer,
-    createResearchState()
-  );
+  const [state, setState] = useState(createResearchState());
   const abortRef = useRef&lt;AbortController | null&gt;(null);
 
   async function onSubmit(e: React.FormEvent&lt;HTMLFormElement&gt;) {
@@ -341,30 +333,64 @@ export function ResearchChat() {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
-    dispatch(createResearchState({ phase: "searching" }));
+    setState(createResearchState({ phase: "searching" }));
 
-    const res = await fetch("/api/research", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message.trim() }),
-      signal: abortRef.current.signal,
-    });
-
-    await readSseStream(res, dispatch);
+    try {
+      await fetchEventSource("/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message.trim() }),
+        signal: abortRef.current.signal,
+        async onopen(response) {
+          if (!response.ok) {
+            throw new Error(`Request failed (${response.status})`);
+          }
+        },
+        onmessage(ev) {
+          setState(JSON.parse(ev.data));
+        },
+        onerror(err) {
+          throw err;
+        },
+      });
+    } catch (err) {
+      if (err instanceof Error &amp;&amp; err.name === "AbortError") return;
+      setState(
+        createResearchState({
+          phase: "error",
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
+    }
   }
 
-  const busy = state.phase !== "idle" && state.phase !== "done" && state.phase !== "error";
+  const busy =
+    state.phase !== "idle" &amp;&amp;
+    state.phase !== "done" &amp;&amp;
+    state.phase !== "error";
 
   return (
     &lt;&gt;
       &lt;form onSubmit={onSubmit} className="flex flex-col gap-4"&gt;
-        &lt;textarea name="message" … disabled={busy} /&gt;
-        &lt;button type="submit" disabled={busy}&gt;Send&lt;/button&gt;
+        &lt;textarea
+          name="message"
+          className="min-h-32 w-full resize-y rounded-lg border border-zinc-300 bg-white px-4 py-3 text-base text-foreground outline-none placeholder:text-zinc-500 focus:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:placeholder:text-zinc-400 dark:focus:border-zinc-500"
+          placeholder="Ask a research question…"
+          rows={4}
+          disabled={busy}
+        /&gt;
+        &lt;button
+          type="submit"
+          disabled={busy}
+          className="self-end rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+        &gt;
+          Send
+        &lt;/button&gt;
       &lt;/form&gt;
 
-      {state.phase === "searching" && &lt;p&gt;Searching the web…&lt;/p&gt;}
-      {state.phase === "streaming-answer" && &lt;p&gt;{state.answerPreview}&lt;/p&gt;}
-      {state.phase === "done" && (
+      {state.phase === "searching" &amp;&amp; &lt;p&gt;Searching the web…&lt;/p&gt;}
+      {state.phase === "streaming-answer" &amp;&amp; &lt;p&gt;{state.answerPreview}&lt;/p&gt;}
+      {state.phase === "done" &amp;&amp; (
         &lt;&gt;
           &lt;p&gt;{state.answer}&lt;/p&gt;
           &lt;ul&gt;
@@ -378,7 +404,7 @@ export function ResearchChat() {
           &lt;/ul&gt;
         &lt;/&gt;
       )}
-      {state.phase === "error" && &lt;p&gt;{state.error}&lt;/p&gt;}
+      {state.phase === "error" &amp;&amp; &lt;p&gt;{state.error}&lt;/p&gt;}
     &lt;/&gt;
   );
 }</pre>
@@ -388,10 +414,17 @@ export function ResearchChat() {
     replace the disabled form from Lesson 25.
   </p>
 
+  <p>
+    Unlike triage (Lesson 20), each SSE frame is a <em>complete</em>
+    <code>ResearchUIState</code> — not a partial patch — so
+    <code>useState</code> is enough. Triage uses <code>useReducer</code> to merge
+    patches; here you just replace state on every frame.
+  </p>
+
   <h2>Check your understanding</h2>
 
-  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Server maps events; client merges snapshots.","false":"Raw OpenAI events never cross the browser boundary."}'>
-    <h3>1. What does the React reducer receive?</h3>
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Server maps events; client replaces state with each snapshot.","false":"Raw OpenAI events never cross the browser boundary."}'>
+    <h3>1. What does the React client receive on each SSE frame?</h3>
     <div class="quiz-options">
       <button data-correct="false">Raw OpenAI stream events from the API</button>
       <button data-correct="true">UI phase snapshots from your route handler</button>
@@ -425,9 +458,11 @@ export function ResearchChat() {
   <div class="practice">
     <p><strong>35-minute win:</strong> Send a question in the browser — watch search, streaming answer, citations.</p>
     <ol>
+      <li>Create <code>lib/research-state.ts</code> — types + <code>createResearchState</code></li>
       <li>Create <code>lib/stream-research.ts</code> — phase machine + <code>streamResearch</code> (see above)</li>
       <li>Rewrite <code>app/api/research/route.ts</code> — SSE stream, <code>runtime = "nodejs"</code></li>
-      <li>Create <code>components/ResearchChat.tsx</code> — <code>useReducer</code> + <code>fetch</code> parse loop</li>
+      <li><code>npm install @microsoft/fetch-event-source</code></li>
+      <li>Create <code>components/ResearchChat.tsx</code> — <code>useState</code> + <code>fetchEventSource</code></li>
       <li>Update <code>app/page.tsx</code> — render <code>&lt;ResearchChat /&gt;</code></li>
       <li><code>npm run dev</code> — ask a current-events question (e.g. “What changed in Next.js 15?”)</li>
       <li>Confirm phases: searching → streaming text → citation links at done</li>
