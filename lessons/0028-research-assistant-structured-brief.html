@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 28 — Structured Research Brief</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 28 · ~30 minutes</div>
+  <h1>Structured Research Brief</h1>
+
+  <p class="epigraph">
+    Plain prose is for chat.
+    A schema is for your product card.
+  </p>
+
+  <p>
+    <a href="0027-research-assistant-streaming-ui.html">Lesson 27</a> streamed a
+    free-text answer. That works — but a research product needs predictable fields:
+    headline, summary, bullets, confidence. Same move you made in the triage
+    capstone with <code>TriageCard</code> (
+    <a href="0015-capstone-feature-triage.html">Lesson 15</a>) and practiced in
+    <a href="0006-stream-structured-output.html">Lesson 6</a>. This lesson adds
+    a Zod <code>ResearchBrief</code> and renders a typed card at
+    <code>done</code>.
+  </p>
+
+  <h2>What changes</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Lesson 27</th>
+        <th>This lesson</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>answer</code> / <code>answerPreview</code> prose</td>
+        <td><code>brief</code> / <code>briefPreview</code> JSON</td>
+      </tr>
+      <tr>
+        <td><code>responses.create({ stream: true })</code></td>
+        <td><code>responses.stream()</code> + <code>zodTextFormat</code></td>
+      </tr>
+      <tr>
+        <td>Paragraph + citation list</td>
+        <td>Summary card + citation list</td>
+      </tr>
+      <tr>
+        <td>Triage: two turns (tool + card)</td>
+        <td>One turn: <code>web_search</code> + structured output</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Quick reference:
+    <a href="../reference/research-brief.html">research brief</a> ·
+    <a href="../reference/structured-outputs.html">structured outputs</a>.
+  </p>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">React client                  stream-research.ts           OpenAI
+  │                                  │                        │
+  │◄── { phase, briefPreview } ──────│◄── output_text.delta ──│ web_search
+  │    (raw JSON chunks)             │    (JSON text)         │ → message
+  │◄── { phase: done, brief, … } ────│ finalResponse()        │
+  │    typed card + citations        │ output_parsed + annot. │</pre>
+
+  <p>
+    The phase machine is unchanged —
+    <code>idle → searching → streaming-answer → done</code>. What streams during
+    <code>streaming-answer</code> is now <strong>raw JSON text</strong>, not
+    prose. Do not <code>JSON.parse</code> partial
+    <code>briefPreview</code> — wait for <code>finalResponse()</code>.
+  </p>
+
+  <div class="callout">
+    <strong>Citations stay separate from the schema.</strong><br>
+    <code>ResearchBrief</code> holds your product fields. Citation links still
+    come from <code>url_citation</code> annotations on the final message — same
+    rule as Lessons 26–27. Never put URLs in the Zod schema and trust them;
+    annotations are the source of truth.
+  </div>
+
+  <h2>1. Schema — <code>lib/schemas.ts</code></h2>
+
+  <p>
+    Client-safe module — no OpenAI imports. Export both the Zod schema and the
+    inferred TypeScript type.
+  </p>
+
+  <pre class="example">import { z } from "zod";
+
+export const ResearchBrief = z.object({
+  headline: z
+    .string()
+    .describe("One-line takeaway for a busy builder"),
+  summary: z
+    .string()
+    .describe("Two or three sentences answering the question"),
+  key_points: z
+    .array(z.string())
+    .describe("Three to five concise facts or implications"),
+  confidence: z
+    .enum(["low", "medium", "high"])
+    .describe("How well the available sources support this answer"),
+});
+
+export type ResearchBrief = z.infer&lt;typeof ResearchBrief&gt;;</pre>
+
+  <h2>2. UI state — update <code>lib/research-state.ts</code></h2>
+
+  <p>
+    Replace prose fields with brief fields. Import the type from
+    <code>schemas.ts</code>.
+  </p>
+
+  <pre class="example">import type { ResearchBrief } from "@/lib/schemas";
+
+export type ResearchUIState = {
+  phase: ResearchPhase;
+  briefPreview: string;
+  brief: ResearchBrief | null;
+  citations: Citation[];
+  searched: boolean;
+  error: string | null;
+};
+
+export function createResearchState(
+  overrides: Partial&lt;ResearchUIState&gt; = {}
+): ResearchUIState {
+  return {
+    phase: "idle",
+    briefPreview: "",
+    brief: null,
+    citations: [],
+    searched: false,
+    error: null,
+    ...overrides,
+  };
+}</pre>
+
+  <h2>3. Stream helper — switch to <code>responses.stream()</code></h2>
+
+  <p>
+    <code>responses.create({ stream: true })</code> does not give you
+    <code>output_parsed</code>. Use <code>responses.stream()</code> with
+    <code>zodTextFormat</code> — same pattern as turn 2 in
+    <code>practice/lib/stream-triage.mjs</code>, but in a <em>single</em> turn
+    with <code>web_search</code>.
+  </p>
+
+  <pre class="example">import { zodTextFormat } from "openai/helpers/zod";
+import { ResearchBrief } from "@/lib/schemas";
+
+export async function streamResearch(
+  message: string,
+  onSnapshot: (state: ResearchUIState) => void
+) {
+  const state = createResearchState({ phase: "searching" });
+  onSnapshot(state);
+
+  const stream = openai.responses.stream({
+    model: "gpt-5-mini",
+    instructions:
+      "You are a research assistant for solo builders. Search the web when the question needs current or factual grounding. Return a structured brief grounded in what you find.",
+    input: message,
+    tools: [{ type: "web_search", search_context_size: "low" }],
+    text: { format: zodTextFormat(ResearchBrief, "research_brief") },
+  });
+
+  for await (const event of stream) {
+    if (
+      event.type === "response.output_item.added" &&
+      event.item.type === "web_search_call"
+    ) {
+      state.searched = true;
+      state.phase = "searching";
+      onSnapshot({ ...state });
+    }
+
+    if (
+      event.type === "response.output_item.added" &&
+      event.item.type === "message"
+    ) {
+      state.briefPreview = "";
+    }
+
+    if (event.type === "response.output_text.delta") {
+      state.phase = "streaming-answer";
+      state.briefPreview += event.delta;
+      onSnapshot({ ...state });
+    }
+  }
+
+  const response = await stream.finalResponse();
+  state.brief = response.output_parsed ?? null;
+  state.citations = extractUrlCitations(response);
+  state.searched = response.output.some(
+    (item) => item.type === "web_search_call"
+  );
+  state.phase = "done";
+  onSnapshot({ ...state });
+}</pre>
+
+  <div class="callout">
+    <strong><code>finalResponse()</code> after the loop.</strong><br>
+    Call it once the async iterator finishes — not on every
+    <code>response.completed</code> event mid-loop. That is when
+    <code>output_parsed</code> is Zod-validated and safe for React state.
+  </div>
+
+  <p>
+    The route handler (<code>app/api/research/route.ts</code>) stays the same —
+    it still sends full <code>ResearchUIState</code> snapshots over SSE.
+  </p>
+
+  <h2>4. Client — render the brief card</h2>
+
+  <p>
+    Update <code>components/ResearchChat.tsx</code>:
+  </p>
+
+  <ul>
+    <li>During <code>streaming-answer</code>: optional collapsible “Live draft” showing <code>briefPreview</code> (monospace JSON)</li>
+    <li>At <code>done</code>: render <code>state.brief</code> fields + citation links below</li>
+  </ul>
+
+  <pre class="example">{state.phase === "done" &amp;&amp; state.brief &amp;&amp; (
+  &lt;article className="rounded-lg border border-zinc-300 p-4 dark:border-zinc-600"&gt;
+    &lt;h2 className="text-lg font-semibold"&gt;{state.brief.headline}&lt;/h2&gt;
+    &lt;p className="mt-2 text-sm"&gt;{state.brief.summary}&lt;/p&gt;
+    &lt;ul className="mt-3 list-disc pl-5 text-sm"&gt;
+      {state.brief.key_points.map((point) =&gt; (
+        &lt;li key={point}&gt;{point}&lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+    &lt;p className="mt-3 text-xs uppercase tracking-wide text-zinc-500"&gt;
+      Confidence: {state.brief.confidence}
+    &lt;/p&gt;
+  &lt;/article&gt;
+)}</pre>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Deltas are JSON string chunks — parse only at the end.","false":"Partial JSON throws — accumulate preview, parse at finalResponse."}'>
+    <h3>1. When is briefPreview safe to JSON.parse?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">On every output_text.delta event</button>
+      <button data-correct="true">After stream finalResponse completes</button>
+      <button data-correct="false">Before the web search finishes</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Annotations are trustworthy; schema URLs are not.","false":"Model-generated URLs in JSON are not verified sources."}'>
+    <h3>2. Where do citation links come from?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">A urls field in ResearchBrief</button>
+      <button data-correct="true">url_citation annotations on the message</button>
+      <button data-correct="false">Markdown links inside summary text</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. stream plus zodTextFormat yields output_parsed.","false":"create stream true lacks auto Zod parse at the end."}'>
+    <h3>3. Which SDK call gives output_parsed?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">responses stream with zodTextFormat</button>
+      <button data-correct="false">responses create with stream true</button>
+      <button data-correct="false">responses create without text format</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>30-minute win:</strong> Ask a question — watch JSON stream, then see a typed brief card with citations.</p>
+    <ol>
+      <li>Create <code>lib/schemas.ts</code> — <code>ResearchBrief</code> Zod schema</li>
+      <li>Update <code>lib/research-state.ts</code> — <code>brief</code> / <code>briefPreview</code> replace <code>answer</code> / <code>answerPreview</code></li>
+      <li>Update <code>lib/stream-research.ts</code> — <code>responses.stream()</code> + <code>zodTextFormat</code> + <code>finalResponse()</code></li>
+      <li>Update <code>components/ResearchChat.tsx</code> — brief card at <code>done</code>, optional JSON preview while streaming</li>
+      <li><code>npm run dev</code> — ask a current-events question</li>
+      <li>Confirm: searching → JSON preview growing → card with headline, summary, bullets, confidence</li>
+      <li>Confirm citation links still render below the card from annotations</li>
+      <li>Ask “What is HTTP?” — note timeless answers may skip search but still return a brief</li>
+      <li>Compare with <code>practice/0006-stream-structured.mjs</code> — same stream + parse pattern, plus <code>web_search</code></li>
+    </ol>
+    <p>
+      <strong>Next lesson (29):</strong> multi-turn threads —
+      <code>sessionId</code> + <code>previous_response_id</code> so follow-up
+      questions keep context.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs</a> ·
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0027-research-assistant-streaming-ui.html">Lesson 27 — Research Streaming UI</a> ·
+      Reference: <a href="../reference/research-brief.html">Research Brief</a> ·
+      Next: Lesson 29 — Threads ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

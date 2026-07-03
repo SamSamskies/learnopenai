@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Brief — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Research Brief</h1>
+  <p class="subtitle">Structured output + <code>web_search</code> in one turn — citations from annotations.</p>
+
+  <h2>Schema (<code>lib/schemas.ts</code>)</h2>
+  <pre class="example">export const ResearchBrief = z.object({
+  headline: z.string().describe("One-line takeaway"),
+  summary: z.string().describe("Two or three sentence answer"),
+  key_points: z.array(z.string()).describe("Three to five facts"),
+  confidence: z.enum(["low", "medium", "high"]),
+});</pre>
+
+  <h2>State shape</h2>
+  <pre class="example">type ResearchUIState = {
+  phase: ResearchPhase;
+  briefPreview: string;       // raw JSON during stream
+  brief: ResearchBrief | null; // Zod-validated at done
+  citations: Citation[];       // from url_citation — not schema
+  searched: boolean;
+  error: string | null;
+};</pre>
+
+  <h2>Server loop</h2>
+  <pre class="example">const stream = openai.responses.stream({
+  model: "gpt-5-mini",
+  input: message,
+  tools: [{ type: "web_search", search_context_size: "low" }],
+  text: { format: zodTextFormat(ResearchBrief, "research_brief") },
+});
+
+for await (const event of stream) {
+  // web_search_call → searching
+  // output_text.delta → append briefPreview
+}
+
+const response = await stream.finalResponse();
+state.brief = response.output_parsed;
+state.citations = extractUrlCitations(response);</pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>brief</code> fields</td>
+        <td><code>output_parsed</code> after <code>finalResponse()</code></td>
+      </tr>
+      <tr>
+        <td><code>citations</code></td>
+        <td><code>url_citation</code> annotations on final message</td>
+      </tr>
+      <tr>
+        <td><code>briefPreview</code></td>
+        <td>Accumulated deltas — display only, never <code>JSON.parse</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Render at <code>done</code></h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>UI</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>headline</code></td>
+        <td>Card title</td>
+      </tr>
+      <tr>
+        <td><code>summary</code></td>
+        <td>Lead paragraph</td>
+      </tr>
+      <tr>
+        <td><code>key_points</code></td>
+        <td>Bullet list</td>
+      </tr>
+      <tr>
+        <td><code>confidence</code></td>
+        <td>Badge or label</td>
+      </tr>
+      <tr>
+        <td><code>citations</code></td>
+        <td>Separate link list below card</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0028-research-assistant-structured-brief.html">Lesson 28</a> ·
+      <a href="structured-outputs.html">Structured Outputs</a> ·
+      <a href="stream-research-ui.html">Research Streaming UI</a> ·
+      <a href="research-assistant.html">Research Assistant</a>
+    </p>
+  </footer>
+</body>
+</html>
