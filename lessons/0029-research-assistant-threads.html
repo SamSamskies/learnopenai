@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 29 — Research Threads</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 29 · ~30 minutes</div>
+  <h1>Research Threads</h1>
+
+  <p class="epigraph">
+    One brief answers a question.
+    A thread answers a conversation.
+  </p>
+
+  <p>
+    <a href="0028-research-assistant-structured-brief.html">Lesson 28</a> returns a
+    great brief — but every Send starts from scratch. You already chained threads in
+    <a href="0023-multi-turn-triage.html">Lesson 23</a> and
+    <a href="0010-state-across-tool-turns.html">Lesson 10</a>. This lesson ports that
+    pattern into <code>research-assistant/</code>: <code>sessionId</code> on the
+    client, <code>lastResponseId</code> on the server,
+    <code>previous_response_id</code> on each OpenAI call.
+  </p>
+
+  <h2>What changes</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Lesson 28</th>
+        <th>This lesson</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Each POST is independent</td>
+        <td>Server chains turns per <code>sessionId</code></td>
+      </tr>
+      <tr>
+        <td><code>{ message }</code></td>
+        <td><code>{ message, sessionId }</code></td>
+      </tr>
+      <tr>
+        <td>UI shows only the latest brief</td>
+        <td>Thread history + in-flight brief</td>
+      </tr>
+      <tr>
+        <td>No <code>store</code> / no saved id</td>
+        <td><code>store: true</code> + save <code>response.id</code></td>
+      </tr>
+      <tr>
+        <td>—</td>
+        <td><strong>New chat</strong> clears server chain + client thread</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Quick reference:
+    <a href="../reference/conversation-state.html">conversation state</a> ·
+    <a href="../reference/research-assistant.html">research assistant</a>.
+  </p>
+
+  <h2>Research vs triage: one id per turn</h2>
+
+  <p>
+    Triage sometimes needs <strong>two</strong> responses per user message (tool turn,
+    then structured card). You saved turn 2's id. Research is simpler — one
+    <code>responses.stream()</code> call per user message (web search + brief in a
+    single response). Save that response's id.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Capstone</th>
+        <th>Responses per user message</th>
+        <th>Save this id</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Triage (backlog path)</td>
+        <td>Turn 1: <code>function_call</code> · Turn 2: card</td>
+        <td><strong>Turn 2</strong> <code>response.id</code></td>
+      </tr>
+      <tr>
+        <td>Research Assistant</td>
+        <td>Single stream: search (optional) + <code>ResearchBrief</code></td>
+        <td><code>finalResponse().id</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">Browser                     POST /api/research              OpenAI
+  │  { message, sessionId }         │                            │
+  │────────────────────────────────►│ lastId = sessions.get(id)  │
+  │                                 │ streamResearch(…, lastId)  │
+  │                                 │───────────────────────────►│ store: true
+  │                                 │                            │ previous_response_id
+  │◄── SSE snapshots ───────────────│◄── stream events ──────────│
+  │  thread[] + live state          │ sessions.set(id, resp.id)  │</pre>
+
+  <div class="callout warn">
+    <strong>Resend every turn</strong><br>
+    <code>instructions</code> and <code>tools</code> do not carry over the chain.
+    Your <code>streamResearch</code> helper already sends them — keep doing so on
+    every turn. Only the new user <code>input</code> and
+    <code>previous_response_id</code> change.
+  </div>
+
+  <h2>1. Session map — <code>lib/sessions.ts</code></h2>
+
+  <p>
+    In-memory <code>Map</code> for this lesson — same as
+    <code>practice/0023-triage-conversation.mjs</code>. In production, persist
+    <code>lastResponseId</code> in your DB next to the thread row.
+  </p>
+
+  <pre class="example">const sessions = new Map&lt;string, string&gt;();
+
+export function getLastResponseId(sessionId: string): string | null {
+  return sessions.get(sessionId) ?? null;
+}
+
+export function setLastResponseId(sessionId: string, responseId: string) {
+  sessions.set(sessionId, responseId);
+}
+
+export function clearSession(sessionId: string) {
+  sessions.delete(sessionId);
+}</pre>
+
+  <h2>2. Stream helper — chain + return id</h2>
+
+  <p>
+    Add <code>store: true</code>, optional <code>previous_response_id</code>, and
+    return <code>response.id</code> so the route can save it.
+  </p>
+
+  <pre class="example">export async function streamResearch(
+  message: string,
+  onSnapshot: (state: ResearchUIState) =&gt; void,
+  { previousResponseId }: { previousResponseId?: string } = {}
+): Promise&lt;string | null&gt; {
+  const stream = openai.responses.stream({
+    model: "gpt-5-mini",
+    instructions: "…",
+    input: message,
+    tools: [{ type: "web_search", search_context_size: "low" }],
+    text: { format: zodTextFormat(ResearchBrief, "research_brief") },
+    store: true,
+    ...(previousResponseId &amp;&amp; { previous_response_id: previousResponseId }),
+  });
+
+  // … same event loop as Lesson 28 …
+
+  const response = await stream.finalResponse();
+  // … set brief, citations, phase done …
+  onSnapshot({ ...state });
+  return response.id;
+}</pre>
+
+  <p>
+    Optionally add <code>responseId: string | null</code> to
+    <code>ResearchUIState</code> and include it in the final snapshot — useful for
+    debugging, same as triage's <code>responseId</code> field.
+  </p>
+
+  <h2>3. Route — lookup, stream, save</h2>
+
+  <pre class="example">const sessionId =
+  typeof body.sessionId === "string" &amp;&amp; body.sessionId
+    ? body.sessionId
+    : crypto.randomUUID();
+
+const previousResponseId = getLastResponseId(sessionId) ?? undefined;
+
+const responseId = await streamResearch(message.trim(), send, {
+  previousResponseId,
+});
+
+if (responseId) {
+  setLastResponseId(sessionId, responseId);
+}</pre>
+
+  <h2>4. New chat — <code>DELETE /api/session</code></h2>
+
+  <p>
+    A <strong>New chat</strong> button should do three things:
+  </p>
+
+  <ol>
+    <li><code>DELETE /api/session?id=&lt;sessionId&gt;</code> — clear server map entry</li>
+    <li>Issue a fresh UUID in <code>sessionStorage</code></li>
+    <li>Clear the client thread array</li>
+  </ol>
+
+  <pre class="example">// app/api/session/route.ts
+export async function DELETE(req: Request) {
+  const sessionId = new URL(req.url).searchParams.get("id");
+  if (sessionId) clearSession(sessionId);
+  return new Response(null, { status: 204 });
+}</pre>
+
+  <h2>5. Client — sessionId + thread history</h2>
+
+  <p>
+    Generate a stable <code>sessionId</code> once per browser tab
+    (<code>sessionStorage</code>). Send it on every POST.
+  </p>
+
+  <p>
+    Keep a <code>turns</code> array of completed exchanges
+    (<code>{ question, brief, citations, searched }</code>). On each Send:
+  </p>
+
+  <ul>
+    <li>Push is wrong — wait until <code>phase === "done"</code>, then append the turn</li>
+    <li>Render prior turns above the form; show live streaming state for the current turn only</li>
+    <li>Clear <code>turns</code> on New chat</li>
+  </ul>
+
+  <pre class="example">body: JSON.stringify({ message: message.trim(), sessionId }),
+
+// After stream completes at done:
+setTurns((prev) =&gt; [
+  ...prev,
+  { question, brief: state.brief!, citations: state.citations, searched: state.searched },
+]);</pre>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. One stream call — save finalResponse id.","false":"Triage turn-2 id rule does not apply here."}'>
+    <h3>1. Which response id do you save per research turn?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">finalResponse id from stream</button>
+      <button data-correct="false">The web_search_call item id</button>
+      <button data-correct="false">The sessionId from the client</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. instructions must be resent each turn.","false":"instructions persist automatically on chains."}'>
+    <h3>2. What must you resend every turn?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">instructions and tools</button>
+      <button data-correct="false">The full prior transcript in input</button>
+      <button data-correct="false">Only the ResearchBrief schema</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. store true enables server-side chaining.","false":"Chaining works without store on default."}'>
+    <h3>3. Why add store true?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Server replays prior turns via stored responses</button>
+      <button data-correct="false">It caches the Zod schema for free</button>
+      <button data-correct="false">It skips web_search on follow-ups</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>30-minute win:</strong> three questions, one thread, follow-up recall.</p>
+    <ol>
+      <li>Create <code>lib/sessions.ts</code> — get / set / clear <code>lastResponseId</code></li>
+      <li>Update <code>lib/stream-research.ts</code> — <code>store: true</code>, <code>previousResponseId</code>, return <code>response.id</code></li>
+      <li>Update <code>app/api/research/route.ts</code> — accept <code>sessionId</code>, chain, save id</li>
+      <li>Add <code>app/api/session/route.ts</code> — <code>DELETE</code> clears server entry</li>
+      <li>Update <code>components/ResearchChat.tsx</code> — <code>sessionId</code>, thread history, New chat button</li>
+      <li><code>npm run dev</code> — ask a current-events question (e.g. a recent product launch)</li>
+      <li>Follow up: <em>How does that affect solo builders?</em> — brief should reference the prior turn without re-explaining from zero</li>
+      <li>Follow up: <em>What should I watch out for?</em> — often no new web search; model recalls thread</li>
+      <li>Click <strong>New chat</strong> — ask the comparison again; context should be gone</li>
+      <li>Compare with <code>practice/0023-triage-conversation.mjs</code> — same session map, simpler id rule</li>
+    </ol>
+    <p>
+      <strong>Next lesson (30):</strong> doc upload —
+      <code>file_search</code> on a vector store so answers cite uploaded docs
+      alongside web sources.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/conversation-state">Conversation state</a> ·
+    Revisit:
+    <a href="https://platform.openai.com/docs/guides/streaming-responses">Streaming responses</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0028-research-assistant-structured-brief.html">Lesson 28 — Structured Brief</a> ·
+      Reference: <a href="../reference/conversation-state.html">Conversation State</a> ·
+      Next: Lesson 30 — Doc Upload ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
