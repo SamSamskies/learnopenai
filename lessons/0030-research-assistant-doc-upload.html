@@ -236,19 +236,70 @@ export function updateSession(sessionId: string, patch: Partial&lt;SessionRecord
     Reject huge files in the route (e.g. 4 MB) before hitting the API.
   </p>
 
-  <h2>4. Stream helper — mixed citations</h2>
+  <h2>4. UI state types — <code>lib/research-state.ts</code></h2>
 
   <p>
-    Extend <code>ResearchUIState</code> with <code>searchedDocs: boolean</code>.
-    Detect <code>file_search_call</code> in the event loop. After
-    <code>finalResponse()</code>, extract both annotation types:
+    Lesson 29 tracked web URLs as <code>Citation[]</code>. This lesson replaces
+    that with a <code>Source</code> union so Sources can show links <em>or</em>
+    uploaded filenames. This file is types and helpers only — no API calls.
   </p>
+
+  <ol>
+    <li>
+      Replace <code>Citation</code> with a discriminated union:
+    </li>
+  </ol>
 
   <pre class="example">export type Source =
   | { kind: "url"; title: string; url: string }
-  | { kind: "file"; filename: string };
+  | { kind: "file"; filename: string };</pre>
 
-function extractSources(response: Response): Source[] {
+  <ol start="2">
+    <li>
+      On <code>ResearchUIState</code>: rename <code>citations</code> →
+      <code>sources: Source[]</code>; add <code>searchedDocs: boolean</code>
+      (parallel to <code>searched</code> for web).
+    </li>
+    <li>
+      Replace <code>dedupeCitations</code> with <code>dedupeSources</code> —
+      dedupe URLs by normalized href; dedupe files by <code>filename</code>.
+    </li>
+    <li>
+      Update <code>createResearchState</code> defaults:
+      <code>sources: []</code>, <code>searchedDocs: false</code>.
+    </li>
+  </ol>
+
+  <h2>5. Stream helper — <code>lib/stream-research.ts</code></h2>
+
+  <p>
+    Wire the session's vector store into the Responses stream and extract mixed
+    citations from the final message.
+  </p>
+
+  <ol>
+    <li>
+      Add <code>vectorStoreId</code> to <code>streamResearch</code> options
+      (alongside <code>previousResponseId</code>).
+    </li>
+    <li>
+      Register <code>file_search</code> <strong>only when</strong>
+      <code>vectorStoreId</code> is set — spread it into the
+      <code>tools</code> array next to <code>web_search</code>.
+    </li>
+    <li>
+      In the event loop, detect <code>file_search_call</code> the same way you
+      already handle <code>web_search_call</code> — set
+      <code>searchedDocs = true</code> and keep <code>phase: "searching"</code>.
+    </li>
+    <li>
+      Replace <code>extractUrlCitations</code> with
+      <code>extractSources</code> — pull both annotation types after
+      <code>finalResponse()</code>:
+    </li>
+  </ol>
+
+  <pre class="example">function extractSources(response: Response): Source[] {
   const message = response.output.filter((i) => i.type === "message").at(-1);
   const annotations = (message?.content ?? [])
     .filter((p) => p.type === "output_text")
@@ -265,9 +316,16 @@ function extractSources(response: Response): Source[] {
   return dedupeSources([...urls, ...files]);
 }</pre>
 
-  <p>
-    Update <code>instructions</code> — name both data sources explicitly:
-  </p>
+  <ol start="5">
+    <li>
+      After <code>finalResponse()</code>, set <code>state.sources</code> and
+      re-check <code>searchedDocs</code> from <code>response.output</code> (same
+      pattern as <code>searched</code>).
+    </li>
+    <li>
+      Update <code>instructions</code> — name both data sources explicitly:
+    </li>
+  </ol>
 
   <pre class="example">"Use file search when the user uploaded documents or asks about 'our spec',
 'this doc', or internal material. Use web search for current public facts.
@@ -275,25 +333,47 @@ Return a structured brief grounded in what you retrieve. Cite sources via
 annotations — do not invent filenames or URLs."</pre>
 
   <p>
-    Pass <code>vectorStoreId</code> into <code>streamResearch</code> from the
-    route via <code>getSession(sessionId).vectorStoreId</code>.
+    In <code>app/api/research/route.ts</code>, pass the store id from the
+    session:
   </p>
 
-  <h2>5. Client — upload + mixed Sources</h2>
+  <pre class="example">const { vectorStoreId } = getSession(sessionId);
+const responseId = await streamResearch(message.trim(), send, {
+  previousResponseId,
+  vectorStoreId,
+});</pre>
+
+  <h2>6. Client — <code>components/ResearchChat.tsx</code></h2>
 
   <p>
-    Above the textarea, add:
+    Add upload UI above the textarea and render mixed Sources in each brief.
   </p>
 
-  <ul>
-    <li>Hidden <code>&lt;input type="file"&gt;</code> triggered by an Upload button</li>
-    <li>List of uploaded filenames for this session (from upload response + local state)</li>
-    <li>Disabled Send while upload is in flight</li>
-  </ul>
-
-  <p>
-    In <code>BriefArticle</code>, render Sources by <code>kind</code>:
-  </p>
+  <ol>
+    <li>
+      <strong>Upload control:</strong> hidden
+      <code>&lt;input type="file" accept=".pdf,.md,.txt"&gt;</code> triggered
+      by an Upload button; <code>POST /api/upload</code> with
+      <code>FormData</code> (<code>file</code> + <code>sessionId</code>).
+    </li>
+    <li>
+      <strong>Local state:</strong> <code>uploadedFiles</code> list (from upload
+      response) and <code>uploading</code> flag. Show filenames as chips;
+      button label becomes “Indexing…” while upload is in flight.
+    </li>
+    <li>
+      <strong>Disable Send</strong> while <code>uploading</code> (extend
+      <code>canSend</code> / <code>busy</code> checks).
+    </li>
+    <li>
+      Update <code>Turn</code> to store <code>sources</code>,
+      <code>searched</code>, and <code>searchedDocs</code> from the final SSE
+      snapshot.
+    </li>
+    <li>
+      In <code>BriefArticle</code>, render Sources by <code>kind</code>:
+    </li>
+  </ol>
 
   <pre class="example">{sources.map((s) =>
   s.kind === "url" ? (
@@ -303,11 +383,20 @@ annotations — do not invent filenames or URLs."</pre>
   )
 )}</pre>
 
-  <p>
-    Footer badges: “Grounded with web search” / “Grounded with documents” —
-    mirror <code>searched</code> and <code>searchedDocs</code> from the final
-    snapshot (and persist on each <code>Turn</code>).
-  </p>
+  <ol start="6">
+    <li>
+      Footer badges: “Grounded with web search” / “Grounded with documents” —
+      mirror <code>searched</code> and <code>searchedDocs</code>.
+    </li>
+    <li>
+      In <code>LiveTurn</code>, show “Searching documents…” /
+      “Searching the web…” during <code>phase: "searching"</code>.
+    </li>
+    <li>
+      <strong>New chat</strong> clears <code>uploadedFiles</code> (server
+      session is already cleared via <code>DELETE /api/session</code>).
+    </li>
+  </ol>
 
   <h2>Check your understanding</h2>
 
@@ -346,12 +435,41 @@ annotations — do not invent filenames or URLs."</pre>
   <div class="practice">
     <p><strong>35-minute win:</strong> upload a doc, ask from it, ask from the web.</p>
     <ol>
-      <li>Expand <code>lib/sessions.ts</code> — <code>SessionRecord</code> with <code>vectorStoreId</code> and <code>files</code></li>
-      <li>Add <code>lib/upload-doc.ts</code> — create store, upload, <code>createAndPoll</code></li>
-      <li>Add <code>app/api/upload/route.ts</code> — <code>FormData</code> with <code>file</code> + <code>sessionId</code></li>
-      <li>Update <code>lib/research-state.ts</code> — <code>Source</code> union, <code>searchedDocs</code></li>
-      <li>Update <code>lib/stream-research.ts</code> — conditional <code>file_search</code>, mixed annotations, updated instructions</li>
-      <li>Update <code>components/ResearchChat.tsx</code> — upload button, file list, mixed Sources rendering</li>
+      <li>
+        Expand <code>lib/sessions.ts</code> — <code>SessionRecord</code> with
+        <code>vectorStoreId</code> and <code>files</code>
+      </li>
+      <li>
+        Add <code>lib/upload-doc.ts</code> — create store, upload,
+        <code>createAndPoll</code>
+      </li>
+      <li>
+        Add <code>app/api/upload/route.ts</code> — <code>FormData</code> with
+        <code>file</code> + <code>sessionId</code>
+      </li>
+      <li>
+        Update <code>lib/research-state.ts</code> — <code>Source</code> union
+        replaces <code>Citation</code>; rename <code>citations</code> →
+        <code>sources</code>; add <code>searchedDocs</code> and
+        <code>dedupeSources</code>
+      </li>
+      <li>
+        Update <code>lib/stream-research.ts</code> — accept
+        <code>vectorStoreId</code>; conditional <code>file_search</code> tool;
+        handle <code>file_search_call</code> events;
+        <code>extractSources</code> for mixed annotations; updated
+        instructions
+      </li>
+      <li>
+        Update <code>app/api/research/route.ts</code> — pass
+        <code>getSession(sessionId).vectorStoreId</code> into
+        <code>streamResearch</code>
+      </li>
+      <li>
+        Update <code>components/ResearchChat.tsx</code> — Upload button + file
+        list; disable Send while indexing; mixed Sources rendering; footer
+        badges for web + docs; clear uploads on New chat
+      </li>
       <li>Upload <code>practice/fixtures/competitor-teardown.md</code> (or any short .md / .txt spec)</li>
       <li><code>npm run dev</code> — upload the file; confirm it appears in the file list</li>
       <li>Ask: <em>When did Acme Analytics ship dark mode, and on which version?</em> — brief should cite <code>competitor-teardown.md</code> (no web search required)</li>

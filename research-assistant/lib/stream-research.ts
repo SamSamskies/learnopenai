@@ -6,32 +6,48 @@ import type { Response } from "openai/resources/responses/responses";
 import { openai } from "@/lib/openai";
 import {
   createResearchState,
-  dedupeCitations,
-  type Citation,
+  dedupeSources,
   type ResearchUIState,
+  type Source,
 } from "@/lib/research-state";
 
-export type { Citation, ResearchPhase, ResearchUIState } from "@/lib/research-state";
+export type { ResearchPhase, ResearchUIState, Source } from "@/lib/research-state";
 export { createResearchState } from "@/lib/research-state";
 
-function extractUrlCitations(response: Response): Citation[] {
+function extractSources(response: Response): Source[] {
   const message = response.output
     .filter((item) => item.type === "message")
     .at(-1);
 
-  const citations = (message?.content ?? [])
+  const annotations = (message?.content ?? [])
     .filter((part) => part.type === "output_text")
-    .flatMap((part) => part.annotations ?? [])
-    .filter((note) => note.type === "url_citation")
-    .map((note) => ({ title: note.title ?? note.url, url: note.url }));
+    .flatMap((part) => part.annotations ?? []);
 
-  return dedupeCitations(citations);
+  const urls = annotations
+    .filter((note) => note.type === "url_citation")
+    .map((note) => ({
+      kind: "url" as const,
+      title: note.title ?? note.url,
+      url: note.url,
+    }));
+
+  const files = annotations
+    .filter((note) => note.type === "file_citation")
+    .map((note) => ({
+      kind: "file" as const,
+      filename: note.filename,
+    }));
+
+  return dedupeSources([...urls, ...files]);
 }
 
 export async function streamResearch(
   message: string,
   onSnapshot: (state: ResearchUIState) => void,
-  { previousResponseId }: { previousResponseId?: string } = {}
+  {
+    previousResponseId,
+    vectorStoreId,
+  }: { previousResponseId?: string; vectorStoreId?: string | null } = {}
 ) {
   const state = createResearchState({ phase: "searching" });
   onSnapshot(state);
@@ -39,9 +55,20 @@ export async function streamResearch(
   const stream = openai.responses.stream({
     model: "gpt-5-mini",
     instructions:
-      "You are a research assistant for solo builders. Search the web when the question needs current or factual grounding. Return a structured brief grounded in what you find.",
+      "You are a research assistant for solo builders. Use file search when the user uploaded documents or asks about 'our spec', 'this doc', or internal material. Use web search for current public facts. Return a structured brief grounded in what you retrieve. Cite sources via annotations — do not invent filenames or URLs.",
     input: message,
-    tools: [{ type: "web_search", search_context_size: "low" }],
+    tools: [
+      { type: "web_search", search_context_size: "low" },
+      ...(vectorStoreId
+        ? [
+            {
+              type: "file_search" as const,
+              vector_store_ids: [vectorStoreId],
+              max_num_results: 3,
+            },
+          ]
+        : []),
+    ],
     text: { format: zodTextFormat(ResearchBrief, "research_brief") },
     store: true,
     ...(previousResponseId && { previous_response_id: previousResponseId }),
@@ -53,6 +80,15 @@ export async function streamResearch(
       event.item.type === "web_search_call"
     ) {
       state.searched = true;
+      state.phase = "searching";
+      onSnapshot({ ...state });
+    }
+
+    if (
+      event.type === "response.output_item.added" &&
+      event.item.type === "file_search_call"
+    ) {
+      state.searchedDocs = true;
       state.phase = "searching";
       onSnapshot({ ...state });
     }
@@ -73,9 +109,12 @@ export async function streamResearch(
 
   const response = await stream.finalResponse();
   state.brief = response.output_parsed ?? null;
-  state.citations = extractUrlCitations(response);
+  state.sources = extractSources(response);
   state.searched = response.output.some(
     (item) => item.type === "web_search_call"
+  );
+  state.searchedDocs = response.output.some(
+    (item) => item.type === "file_search_call"
   );
   state.phase = "done";
   onSnapshot({ ...state });

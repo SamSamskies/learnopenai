@@ -1,5 +1,9 @@
 import { createResearchState } from "@/lib/research-state";
-import { getLastResponseId, setLastResponseId } from "@/lib/sessions";
+import {
+  getLastResponseId,
+  getSession,
+  setLastResponseId,
+} from "@/lib/sessions";
 import { streamResearch } from "@/lib/stream-research";
 
 export const runtime = "nodejs";
@@ -31,7 +35,11 @@ export async function POST(req: Request) {
           : crypto.randomUUID();
 
         const previousResponseId = getLastResponseId(sessionId) ?? undefined;
-        const responseId = await streamResearch(message.trim(), send, { previousResponseId });
+        const { vectorStoreId } = getSession(sessionId);
+        const responseId = await streamResearch(message.trim(), send, {
+          previousResponseId,
+          vectorStoreId,
+        });
 
         if (responseId) {
           setLastResponseId(sessionId, responseId);

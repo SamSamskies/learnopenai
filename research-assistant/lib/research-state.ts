@@ -1,6 +1,8 @@
 import type { ResearchBrief } from "@/lib/schemas";
 
-export type Citation = { title: string; url: string };
+export type Source =
+  | { kind: "url"; title: string; url: string }
+  | { kind: "file"; filename: string };
 
 export type ResearchPhase =
   | "idle"
@@ -13,22 +15,24 @@ export type ResearchUIState = {
   phase: ResearchPhase;
   briefPreview: string;
   brief: ResearchBrief | null;
-  citations: Citation[];
+  sources: Source[];
   searched: boolean;
+  searchedDocs: boolean;
   error: string | null;
 };
 
-export function dedupeCitations(citations: Citation[]): Citation[] {
+export function dedupeSources(sources: Source[]): Source[] {
   const seen = new Set<string>();
-  return citations.filter((c) => {
-    const key = citationKey(c.url);
+  return sources.filter((s) => {
+    const key =
+      s.kind === "url" ? urlSourceKey(s.url) : `file:${s.filename}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
-function citationKey(url: string): string {
+function urlSourceKey(url: string): string {
   try {
     return new URL(url).href.replace(/\/$/, "");
   } catch {
@@ -43,8 +47,9 @@ export function createResearchState(
     phase: "idle",
     briefPreview: "",
     brief: null,
-    citations: [],
+    sources: [],
     searched: false,
+    searchedDocs: false,
     error: null,
     ...overrides,
   };
