@@ -299,9 +299,6 @@ export function ResearchChat() {
           <h1 className="text-3xl font-semibold tracking-tight">
             Research Assistant
           </h1>
-          <p className="mt-2 text-zinc-600 italic dark:text-zinc-400">
-            Web-grounded research for solo builders
-          </p>
         </div>
         <button
           type="button"
