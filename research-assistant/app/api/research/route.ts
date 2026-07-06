@@ -1,5 +1,14 @@
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+} from "ai";
 import { guard } from "@/lib/guard";
 import { createResearchState } from "@/lib/research-state";
+import {
+  lastUserText,
+  RESEARCH_PART_ID,
+  type ResearchUIMessage,
+} from "@/lib/research-ui-message";
 import {
   getLastResponseId,
   getSession,
@@ -20,33 +29,32 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const message = body?.message;
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  const message = lastUserText(messages);
 
-  if (typeof message !== "string" || !message.trim()) {
+  if (!message) {
     return Response.json({ error: "message is required" }, { status: 400 });
   }
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      const send = (state: Parameters<typeof streamResearch>[1] extends (
-        s: infer S
-      ) => void
-        ? S
-        : never) =>
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(state)}\n\n`)
-        );
+  const sessionId =
+    typeof body.sessionId === "string" && body.sessionId
+      ? body.sessionId
+      : crypto.randomUUID();
 
+  const stream = createUIMessageStream<ResearchUIMessage>({
+    originalMessages: messages,
+    execute: async ({ writer }) => {
       try {
-        const sessionId =
-          typeof body.sessionId === "string" && body.sessionId
-            ? body.sessionId
-            : crypto.randomUUID();
-
         const previousResponseId = getLastResponseId(sessionId) ?? undefined;
         const { vectorStoreId } = getSession(sessionId);
-        const responseId = await streamResearch(message.trim(), send, {
+
+        const responseId = await streamResearch(message, (state) => {
+          writer.write({
+            type: "data-research",
+            id: RESEARCH_PART_ID,
+            data: state,
+          });
+        }, {
           previousResponseId,
           vectorStoreId,
         });
@@ -55,19 +63,17 @@ export async function POST(req: Request) {
           setLastResponseId(sessionId, responseId);
         }
       } catch (err) {
-        send(
-          createResearchState({
+        writer.write({
+          type: "data-research",
+          id: RESEARCH_PART_ID,
+          data: createResearchState({
             phase: "error",
             error: publicError(err),
-          })
-        );
-      } finally {
-        controller.close();
+          }),
+        });
       }
     },
   });
 
-  return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream" },
-  });
+  return createUIMessageStreamResponse({ stream });
 }

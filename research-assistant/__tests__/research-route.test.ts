@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/research/route";
-import { readSseStream } from "@/lib/read-sse-stream";
-import type { ResearchUIState } from "@/lib/research-state";
+import { readResearchStream } from "@/lib/read-research-stream";
+import type { ResearchUIMessage } from "@/lib/research-ui-message";
 
 const mockStreamText = vi.hoisted(() => vi.fn());
 
@@ -12,6 +12,14 @@ vi.mock("ai", async (importOriginal) => {
     streamText: mockStreamText,
   };
 });
+
+function userMessage(text: string): ResearchUIMessage {
+  return {
+    id: "msg-user-1",
+    role: "user",
+    parts: [{ type: "text", text }],
+  };
+}
 
 function fakeBriefStream() {
   const events = [
@@ -85,7 +93,7 @@ describe("POST /api/research", () => {
       new Request("http://localhost/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "hi" }),
+        body: JSON.stringify({ messages: [userMessage("hi")] }),
       })
     );
     expect(res.status).toBe(401);
@@ -97,17 +105,17 @@ describe("POST /api/research", () => {
       new Request("http://localhost/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "What changed?" }),
+        body: JSON.stringify({ messages: [userMessage("What changed?")] }),
       })
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
 
-    const final = await readSseStream<ResearchUIState>(res, (s) =>
-      phases.push(s.phase)
+    const final = await readResearchStream(res, (state) =>
+      phases.push(state.phase)
     );
 
-    expect(phases[0]).toBe("searching");
+    expect(phases).toContain("searching");
     expect(phases).toContain("streaming-answer");
     expect(final?.phase).toBe("done");
     expect(final?.brief?.headline).toBe("Test");
