@@ -14,6 +14,11 @@ import {
 export type { ResearchPhase, ResearchUIState, Source } from "@/lib/research-state";
 export { createResearchState } from "@/lib/research-state";
 
+export function publicError(err: unknown): string {
+  console.error("[streamResearch]", err);
+  return "Research request failed. Try again in a moment.";
+}
+
 function extractSources(response: Response): Source[] {
   const message = response.output
     .filter((item) => item.type === "message")

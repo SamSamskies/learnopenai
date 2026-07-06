@@ -1,8 +1,18 @@
+import { guard } from "@/lib/guard";
 import { uploadDocToSession } from "@/lib/upload-doc";
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 export async function POST(req: Request) {
+  const auth = guard.checkAuth(req);
+  if (!auth.ok) {
+    return Response.json({ error: auth.error }, { status: auth.status });
+  }
+  const rate = guard.checkRateLimit(req);
+  if (!rate.ok) {
+    return Response.json({ error: rate.error }, { status: rate.status });
+  }
+
   const form = await req.formData();
   const file = form.get("file");
   const sessionId = form.get("sessionId");

@@ -1,14 +1,24 @@
+import { guard } from "@/lib/guard";
 import { createResearchState } from "@/lib/research-state";
 import {
   getLastResponseId,
   getSession,
   setLastResponseId,
 } from "@/lib/sessions";
-import { streamResearch } from "@/lib/stream-research";
+import { publicError, streamResearch } from "@/lib/stream-research";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  const auth = guard.checkAuth(req);
+  if (!auth.ok) {
+    return Response.json({ error: auth.error }, { status: auth.status });
+  }
+  const rate = guard.checkRateLimit(req);
+  if (!rate.ok) {
+    return Response.json({ error: rate.error }, { status: rate.status });
+  }
+
   const body = await req.json();
   const message = body?.message;
 
@@ -30,9 +40,9 @@ export async function POST(req: Request) {
 
       try {
         const sessionId =
-        typeof body.sessionId === "string" && body.sessionId
-          ? body.sessionId
-          : crypto.randomUUID();
+          typeof body.sessionId === "string" && body.sessionId
+            ? body.sessionId
+            : crypto.randomUUID();
 
         const previousResponseId = getLastResponseId(sessionId) ?? undefined;
         const { vectorStoreId } = getSession(sessionId);
@@ -48,7 +58,7 @@ export async function POST(req: Request) {
         send(
           createResearchState({
             phase: "error",
-            error: err instanceof Error ? err.message : String(err),
+            error: publicError(err),
           })
         );
       } finally {

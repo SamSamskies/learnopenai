@@ -14,6 +14,13 @@ import {
 import type { ResearchBrief } from "@/lib/schemas";
 
 const SESSION_KEY = "researchSessionId";
+const appToken = process.env.NEXT_PUBLIC_RESEARCH_API_SECRET;
+
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (appToken) headers.Authorization = `Bearer ${appToken}`;
+  return headers;
+}
 
 type Turn = {
   question: string;
@@ -227,7 +234,11 @@ export function ResearchChat() {
       form.append("file", file);
       form.append("sessionId", sessionId);
 
-      const res = await fetch("/api/upload", { method: "POST", body: form });
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: authHeaders(),
+        body: form,
+      });
       const data = await res.json();
 
       if (!res.ok) {
@@ -261,12 +272,19 @@ export function ResearchChat() {
     try {
       await fetchEventSource("/api/research", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
         body: JSON.stringify({ message, sessionId }),
         signal: abortRef.current.signal,
         async onopen(response) {
           if (!response.ok) {
-            throw new Error(`Request failed (${response.status})`);
+            const body = await response.json().catch(() => ({}));
+            throw new Error(
+              (body as { error?: string }).error ??
+                `Request failed (${response.status})`
+            );
           }
         },
         onmessage(ev) {
