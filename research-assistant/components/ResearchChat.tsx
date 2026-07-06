@@ -294,16 +294,24 @@ export function ResearchChat() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-end">
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Research Assistant
+          </h1>
+          <p className="mt-2 text-zinc-600 italic dark:text-zinc-400">
+            Web-grounded research for solo builders
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => void newChat()}
           disabled={busy}
-          className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="shrink-0 cursor-pointer rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
         >
           New chat
         </button>
-      </div>
+      </header>
 
       {turns.map((turn, i) => (
         <div key={i} className="flex flex-col gap-4">
