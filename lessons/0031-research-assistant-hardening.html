@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 31 — Production Hardening</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 31 · ~40 minutes</div>
+  <h1>Production Hardening</h1>
+
+  <p class="epigraph">
+    The feature works in dev.
+    Hardening makes it shippable.
+  </p>
+
+  <p>
+    <a href="0030-research-assistant-doc-upload.html">Lesson 30</a> completed the
+    Research Assistant: web search, doc upload, threads, structured briefs. You
+    already hardened the triage capstone in
+    <a href="0022-production-hardening.html">Lesson 22</a>. This lesson ports that
+    same server boundary into <code>research-assistant/</code> and locks the SSE
+    contract with Vitest — so CI catches regressions without burning API credits.
+  </p>
+
+  <h2>What changes</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Lesson 30</th>
+        <th>This lesson</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Open research + upload routes</td>
+        <td>Auth + rate limit <em>before</em> streams open</td>
+      </tr>
+      <tr>
+        <td>Raw OpenAI errors in SSE</td>
+        <td>Sanitized <code>phase: "error"</code> copy for users</td>
+      </tr>
+      <tr>
+        <td><code>fetchEventSource</code> checks <code>response.ok</code></td>
+        <td>Parse JSON <code>{ error }</code> on 401 / 429</td>
+      </tr>
+      <tr>
+        <td>Manual browser testing only</td>
+        <td>Vitest asserts SSE phase order + <code>done</code> shape</td>
+      </tr>
+      <tr>
+        <td>—</td>
+        <td><code>lib/read-sse-stream.ts</code> shared by tests</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Quick reference:
+    <a href="../reference/production-hardening.html">production hardening</a> ·
+    <a href="../reference/research-assistant.html">research assistant</a> ·
+    Revisit <code>practice/lib/triage-guard.mjs</code>.
+  </p>
+
+  <h2>Two error channels (again)</h2>
+
+  <p>
+    Streaming routes fail in two places. Mixing them breaks the client parser and
+    React state.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Failure</th>
+        <th>When</th>
+        <th>Response</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Pre-stream</strong></td>
+        <td>Auth, rate limit, invalid body — before SSE bytes</td>
+        <td>HTTP <code>401</code> / <code>429</code> / <code>400</code> + JSON <code>{ error }</code></td>
+      </tr>
+      <tr>
+        <td><strong>Mid-stream</strong></td>
+        <td>OpenAI error after <code>Content-Type: text/event-stream</code></td>
+        <td>SSE snapshot <code>{ phase: "error", error: "…" }</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre class="example">// Client — onopen before parsing SSE frames
+async onopen(response) {
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `Request failed (${response.status})`);
+  }
+}</pre>
+
+  <div class="callout warn">
+    <strong>Never send <code>OPENAI_API_KEY</code> to the browser.</strong><br>
+  The Bearer token here is an <em>app</em> secret (<code>RESEARCH_API_SECRET</code>)
+  — proof the caller may use your route. In production that becomes a session
+  cookie or JWT from your auth provider.
+  </div>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">Browser                     POST /api/research
+  │  Authorization: Bearer …        │
+  │────────────────────────────────►│ checkAuth → checkRateLimit
+  │                                 │   ↓ fail → 401/429 JSON
+  │                                 │ validate body → 400 JSON
+  │                                 │ streamResearch() → SSE snapshots
+  │◄── data: { phase } ────────────│   ↓ catch → phase: "error" frame
+
+Vitest (no network)                 POST /api/research
+  mock openai.responses.stream ────►│ same route handler
+  readSseStream(res) ──────────────►│ assert phases + final done shape</pre>
+
+  <h2>1. Route guard — <code>lib/guard.ts</code></h2>
+
+  <p>
+    Port <code>practice/lib/triage-guard.mjs</code> to TypeScript. Adapt for the
+    Web <code>Request</code> API instead of Node <code>IncomingMessage</code>.
+  </p>
+
+  <pre class="example">type GuardResult =
+  | { ok: true }
+  | { ok: false; status: number; error: string };
+
+export function createResearchGuard({
+  secret,
+  maxPerMinute = 10,
+}: { secret?: string; maxPerMinute?: number } = {}) {
+  const buckets = new Map&lt;string, { count: number; resetAt: number }&gt;();
+
+  function clientIp(req: Request): string {
+    const forwarded = req.headers.get("x-forwarded-for");
+    if (forwarded) return forwarded.split(",")[0].trim();
+    return "unknown";
+  }
+
+  function checkAuth(req: Request): GuardResult {
+    const expected = secret ?? process.env.RESEARCH_API_SECRET;
+    if (!expected) return { ok: true }; // dev: unset secret = open route
+    const header = req.headers.get("authorization") ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (token !== expected) {
+      return { ok: false, status: 401, error: "Unauthorized" };
+    }
+    return { ok: true };
+  }
+
+  function checkRateLimit(req: Request): GuardResult {
+    const ip = clientIp(req);
+    const now = Date.now();
+    let bucket = buckets.get(ip);
+    if (!bucket || now > bucket.resetAt) {
+      bucket = { count: 0, resetAt: now + 60_000 };
+      buckets.set(ip, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > maxPerMinute) {
+      return { ok: false, status: 429, error: "Rate limit exceeded" };
+    }
+    return { ok: true };
+  }
+
+  return { checkAuth, checkRateLimit };
+}
+
+export const guard = createResearchGuard({ maxPerMinute: 12 });</pre>
+
+  <p>
+    When <code>RESEARCH_API_SECRET</code> is unset, auth passes — convenient for
+    local dev. Set it before deploying.
+  </p>
+
+  <h2>2. Guard the routes</h2>
+
+  <p>
+    Run checks at the top of <code>POST</code> handlers — <em>before</em> opening
+    a <code>ReadableStream</code> or calling OpenAI.
+  </p>
+
+  <pre class="example">// app/api/research/route.ts
+import { guard } from "@/lib/guard";
+
+export async function POST(req: Request) {
+  const auth = guard.checkAuth(req);
+  if (!auth.ok) {
+    return Response.json({ error: auth.error }, { status: auth.status });
+  }
+  const rate = guard.checkRateLimit(req);
+  if (!rate.ok) {
+    return Response.json({ error: rate.error }, { status: rate.status });
+  }
+
+  const body = await req.json();
+  // … existing validation + SSE stream …
+}</pre>
+
+  <p>
+    Apply the same guard to <code>app/api/upload/route.ts</code> — uploads are
+    expensive too. Order: auth → rate limit → validate <code>FormData</code> →
+    <code>uploadDocToSession</code>.
+  </p>
+
+  <h2>3. Sanitize mid-stream errors</h2>
+
+  <p>
+    Log the real error on the server. Send product copy across the wire.
+  </p>
+
+  <pre class="example">// lib/stream-research.ts — top of file
+function publicError(err: unknown): string {
+  console.error("[streamResearch]", err);
+  return "Research request failed. Try again in a moment.";
+}
+
+// route.ts catch block
+} catch (err) {
+  send(
+    createResearchState({
+      phase: "error",
+      error: publicError(err),
+    })
+  );
+}</pre>
+
+  <h2>4. Client — send the app token</h2>
+
+  <p>
+    For local dev, mirror the server secret into a public env var (dev only):
+  </p>
+
+  <pre class="example"># .env.local
+OPENAI_API_KEY=sk-…
+RESEARCH_API_SECRET=dev-secret
+NEXT_PUBLIC_RESEARCH_API_SECRET=dev-secret</pre>
+
+  <pre class="example">// components/ResearchChat.tsx
+const appToken = process.env.NEXT_PUBLIC_RESEARCH_API_SECRET;
+
+function authHeaders(): Record&lt;string, string&gt; {
+  const headers: Record&lt;string, string&gt; = {};
+  if (appToken) headers.Authorization = `Bearer ${appToken}`;
+  return headers;
+}
+
+// fetchEventSource + fetch("/api/upload") — spread authHeaders() into headers</pre>
+
+  <div class="callout">
+    <strong>Production swap.</strong><br>
+    Remove <code>NEXT_PUBLIC_*</code> from production builds. Issue a short-lived
+    session token from your auth layer instead — same <code>Authorization</code>
+    header shape.
+  </div>
+
+  <h2>5. SSE reader — <code>lib/read-sse-stream.ts</code></h2>
+
+  <p>
+    Extract the buffer-split loop from
+    <a href="0020-fetch-stream-client.html">Lesson 20</a> so tests and future
+    client refactors share one parser.
+  </p>
+
+  <pre class="example">export async function readSseStream&lt;T&gt;(
+  response: Response,
+  onSnapshot: (state: T) => void
+): Promise&lt;T | null&gt; {
+  if (!response.body) throw new Error("No response body");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let last: T | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+
+    for (const chunk of chunks) {
+      const line = chunk.trim();
+      if (!line.startsWith("data: ")) continue;
+      last = JSON.parse(line.slice(6)) as T;
+      onSnapshot(last);
+    }
+  }
+
+  return last;
+}</pre>
+
+  <h2>6. Vitest — mock the stream, assert the contract</h2>
+
+  <p>
+    Install Vitest in <code>research-assistant/</code>. Mock
+    <code>openai.responses.stream</code> so tests never hit the network.
+  </p>
+
+  <pre class="example">npm install -D vitest</pre>
+
+  <pre class="example">// package.json scripts
+"test": "vitest run",
+"test:watch": "vitest"</pre>
+
+  <pre class="example">// vitest.config.ts
+import path from "node:path";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: { environment: "node" },
+  resolve: {
+    alias: { "@": path.resolve(__dirname, ".") },
+  },
+});</pre>
+
+  <p>
+    Mock a minimal happy path — one searching snapshot, deltas, then
+    <code>done</code> with a parsed brief:
+  </p>
+
+  <pre class="example">// __tests__/research-route.test.ts
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { POST } from "@/app/api/research/route";
+import { readSseStream } from "@/lib/read-sse-stream";
+import type { ResearchUIState } from "@/lib/research-state";
+
+const mockStream = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/openai", () => ({
+  openai: {
+    responses: { stream: mockStream },
+  },
+}));
+
+function fakeBriefStream() {
+  const events = [
+    {
+      type: "response.output_item.added",
+      item: { type: "web_search_call" },
+    },
+    { type: "response.output_text.delta", delta: '{"headline":' },
+    { type: "response.output_text.delta", delta: '"Test"}' },
+  ];
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const e of events) yield e;
+    },
+    finalResponse: async () => ({
+      id: "resp_test_123",
+      output: [
+        { type: "web_search_call" },
+        {
+          type: "message",
+          content: [
+            {
+              type: "output_text",
+              text: "{}",
+              annotations: [
+                {
+                  type: "url_citation",
+                  title: "Example",
+                  url: "https://example.com",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      output_parsed: {
+        headline: "Test",
+        summary: "Summary.",
+        key_points: ["One"],
+        confidence: "high",
+      },
+    }),
+  };
+}
+
+describe("POST /api/research", () => {
+  beforeEach(() => {
+    mockStream.mockReset();
+    mockStream.mockReturnValue(fakeBriefStream());
+    delete process.env.RESEARCH_API_SECRET;
+  });
+
+  it("returns 400 when message is missing", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "message is required" });
+  });
+
+  it("returns 401 when secret is set and token is wrong", async () => {
+    process.env.RESEARCH_API_SECRET = "dev-secret";
+    const res = await POST(
+      new Request("http://localhost/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "hi" }),
+      })
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("streams searching → streaming-answer → done", async () => {
+    const phases: string[] = [];
+    const res = await POST(
+      new Request("http://localhost/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "What changed?" }),
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+    const final = await readSseStream&lt;ResearchUIState&gt;(res, (s) =>
+      phases.push(s.phase)
+    );
+
+    expect(phases[0]).toBe("searching");
+    expect(phases).toContain("streaming-answer");
+    expect(final?.phase).toBe("done");
+    expect(final?.brief?.headline).toBe("Test");
+    expect(final?.sources.some((s) => s.kind === "url")).toBe(true);
+  });
+});</pre>
+
+  <div class="callout">
+    <strong>Integration tests (optional).</strong><br>
+    Tag live API tests with <code>describe.skipIf(!process.env.OPENAI_API_KEY)</code>
+    or a <code>@integration</code> script. Keep them out of default CI — same rule
+    as practice scripts.
+  </div>
+
+  <h2>7. React error boundary (render crashes)</h2>
+
+  <p>
+    SSE errors are handled by <code>phase: "error"</code>. A separate class of
+    failures — bad markdown, thrown render — needs a React error boundary so the
+    whole page does not white-screen.
+  </p>
+
+  <pre class="example">// components/ResearchErrorBoundary.tsx
+"use client";
+
+import { Component, type ReactNode } from "react";
+
+export class ResearchErrorBoundary extends Component&lt;
+  { children: ReactNode },
+  { error: Error | null }
+&gt; {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        &lt;div role="alert" className="rounded-lg border border-red-200 p-4"&gt;
+          &lt;p&gt;Something went wrong rendering this answer.&lt;/p&gt;
+          &lt;button type="button" onClick={() =&gt; this.setState({ error: null })}&gt;
+            Try again
+          &lt;/button&gt;
+        &lt;/div&gt;
+      );
+    }
+    return this.props.children;
+  }
+}</pre>
+
+  <p>
+    Wrap <code>&lt;ResearchChat /&gt;</code> in <code>app/page.tsx</code>. This
+    does not catch async fetch errors — those stay in the reducer / SSE path.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. JSON status before SSE headers are sent.","false":"401 inside an SSE frame breaks fetchEventSource."}'>
+    <h3>1. When should auth return 401?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Before the SSE stream opens</button>
+      <button data-correct="false">Inside the first SSE data frame</button>
+      <button data-correct="false">Only after OpenAI times out</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Mock stream — assert phases without API spend.","false":"Live API tests belong in optional integration runs."}'>
+    <h3>2. What should default Vitest tests do?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Mock OpenAI and assert SSE snapshots</button>
+      <button data-correct="false">Call gpt-5-mini on every CI run</button>
+      <button data-correct="false">Only test Zod schemas in isolation</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. App token authorizes your route — not OpenAI.","false":"The OpenAI key must never reach the browser."}'>
+    <h3>3. What does the Bearer token prove?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Caller may use your research API route</button>
+      <button data-correct="false">Caller holds a valid OpenAI API key</button>
+      <button data-correct="false">Caller owns the vector store files</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>40-minute win:</strong> guarded routes + green Vitest suite.</p>
+    <ol>
+      <li>Add <code>lib/guard.ts</code> — port from <code>triage-guard.mjs</code></li>
+      <li>
+        Guard <code>app/api/research/route.ts</code> and
+        <code>app/api/upload/route.ts</code> — auth + rate limit first
+      </li>
+      <li>Add <code>publicError</code> — sanitize mid-stream failures</li>
+      <li>
+        Update <code>ResearchChat.tsx</code> — <code>authHeaders()</code> on
+        research + upload; parse JSON error in <code>onopen</code>
+      </li>
+      <li>
+        Add to <code>.env.local</code>:
+        <code>RESEARCH_API_SECRET=dev-secret</code> and
+        <code>NEXT_PUBLIC_RESEARCH_API_SECRET=dev-secret</code>
+      </li>
+      <li>Add <code>lib/read-sse-stream.ts</code></li>
+      <li>
+        Install Vitest — <code>vitest.config.ts</code>,
+        <code>__tests__/research-route.test.ts</code> with mocked stream
+      </li>
+      <li>Run <code>npm test</code> — all assertions pass</li>
+      <li>
+        <code>npm run dev</code> — remove token from env temporarily; Send
+        should show <code>Unauthorized</code> (or restore secret and confirm
+        research still works)
+      </li>
+      <li>Spam Send 13 times in one minute — hit <code>429</code> JSON error</li>
+      <li>Add <code>ResearchErrorBoundary</code> — wrap chat on <code>page.tsx</code></li>
+      <li>Compare with <code>practice/0022-production-hardening.mjs</code> — same guard order</li>
+    </ol>
+    <p>
+      <strong>Capstone complete.</strong> You shipped a full Research Assistant:
+      streaming UI, structured briefs, threads, doc upload, and a guarded,
+      testable API boundary. Natural next topics: refactor the client to Vercel AI
+      SDK <code>useChat</code>, cross-provider comparison (mission criterion #4),
+      or deploy to Vercel with production auth.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://nextjs.org/docs/app/building-your-application/routing/route-handlers">Next.js Route Handlers</a> ·
+    <a href="https://vitest.dev/guide/">Vitest guide</a> ·
+    <a href="https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html">OWASP REST Security Cheat Sheet</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0030-research-assistant-doc-upload.html">Lesson 30 — Doc Upload</a> ·
+      Reference: <a href="../reference/production-hardening.html">Production Hardening</a> ·
+      <a href="../reference/research-assistant.html">Research Assistant</a> ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

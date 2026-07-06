@@ -10,7 +10,7 @@ Become a proficient AI Product Engineer who can design, build, and ship products
 
 ## Success looks like
 
-- Ship the Research Assistant end-to-end (streaming UI, web search, citations, multi-turn threads)
+- Ship the Research Assistant end-to-end (streaming UI, web search, citations, multi-turn threads, doc upload, hardened routes) — Lesson 31 in progress
 - Ship a small end-to-end AI product feature using the Responses API (streaming UI, tool calls, structured JSON output) — met at practice level via triage capstone; now shipping as the research app
 - Confidently choose when to use built-in tools vs custom functions vs MCP vs file search
 - Manage conversation state, prompt caching, and background mode with intentional tradeoffs — not cargo-culting
