@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research useChat — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Research useChat</h1>
+  <p class="subtitle">
+    <code>useChat</code> + <code>data-research</code> parts carrying
+    <code>ResearchUIState</code>.
+  </p>
+
+  <h2>Message type</h2>
+  <pre class="example">import type { UIMessage } from "ai";
+import type { ResearchUIState } from "@/lib/research-state";
+
+export type ResearchUIMessage = UIMessage&lt;
+  never,
+  { research: ResearchUIState }
+&gt;;</pre>
+
+  <h2>Server: snapshot → data part</h2>
+  <pre class="example">const RESEARCH_PART_ID = "research-1";
+
+await streamResearch(message, (state) => {
+  writer.write({
+    type: "data-research",
+    id: RESEARCH_PART_ID,
+    data: state,
+  });
+}, { previousResponseId, vectorStoreId });</pre>
+
+  <h2>Client: transport + hook</h2>
+  <pre class="example">import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+
+const { messages, sendMessage, status, stop, setMessages } =
+  useChat&lt;ResearchUIMessage&gt;({
+    transport: new DefaultChatTransport({
+      api: "/api/research",
+      headers: () => authHeaders(),
+      body: () => ({ sessionId }),
+    }),
+  });
+
+const busy = status === "submitted" || status === "streaming";</pre>
+
+  <h2>Read state from a message</h2>
+  <pre class="example">function getResearchPart(message: ResearchUIMessage) {
+  return message.parts.find((p) => p.type === "data-research");
+}
+
+const state = getResearchPart(assistantMessage)?.data;
+// state.phase, state.brief, state.sources, …</pre>
+
+  <h2>status values</h2>
+  <table>
+    <thead>
+      <tr>
+        <th><code>status</code></th>
+        <th>Meaning</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>ready</code></td>
+        <td>Idle — user can send</td>
+      </tr>
+      <tr>
+        <td><code>submitted</code></td>
+        <td>Request sent, awaiting first stream chunk</td>
+      </tr>
+      <tr>
+        <td><code>streaming</code></td>
+        <td>Response actively streaming</td>
+      </tr>
+      <tr>
+        <td><code>error</code></td>
+        <td>Request failed — check <code>error</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>What stays server-side</h2>
+  <ul>
+    <li><code>previousResponseId</code> — session store, not client messages</li>
+    <li><code>vectorStoreId</code> — from upload session</li>
+    <li>Guards, rate limits, <code>streamResearch</code> phase machine</li>
+  </ul>
+
+  <footer>
+    <p>
+      Lesson: <a href="../lessons/0033-research-assistant-use-chat.html">Lesson 33</a> ·
+      <a href="stream-research-ui.html">Research Streaming UI</a> (pre-migration) ·
+      <a href="research-assistant.html">Research Assistant</a>
+    </p>
+  </footer>
+</body>
+</html>

@@ -44,6 +44,12 @@
   `streamText` + `openai.responses()`, built-in web/file search tools, `previousResponseId`, structured `Output.object`. Use for: Lesson 32+ server migration in `research-assistant/`.
 - [AI SDK Core — streamText reference](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text)
   Stream parts (`tool-call`, `text-delta`, `finish`), `result.output`, `finalStep.providerMetadata`. Use for: mapping AI SDK events to custom SSE snapshots.
+- [AI SDK UI — Chatbot (useChat)](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot)
+  `useChat`, `sendMessage`, `status`, `stop`, message `parts`. Use for: Lesson 33 client migration in `research-assistant/`.
+- [AI SDK UI — Streaming Custom Data](https://ai-sdk.dev/docs/ai-sdk-ui/streaming-data)
+  `createUIMessageStream`, `data-*` parts, reconciliation by `id`, `onData`. Use for: streaming `ResearchUIState` as `data-research` parts.
+- [AI SDK UI — Transport](https://ai-sdk.dev/docs/ai-sdk-ui/transport)
+  `DefaultChatTransport` headers, body, `prepareSendMessagesRequest`. Use for: `sessionId` + auth on research route.
 
 ## Wisdom (Communities)
 

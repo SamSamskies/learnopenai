@@ -24,7 +24,7 @@ Responses API, streaming, tool calling, structured outputs, image generation, fi
 - **Stack:** Next.js App Router, TypeScript, Zod, OpenAI Node SDK. App lives in `research-assistant/`.
 - **Lesson arc:** One vertical slice per lesson — scaffold → API → streaming UI → structured brief → threads → file search → hardening.
 - **Reuse:** Port patterns from `practice/lib/` (stream helpers, triage guard) rather than relearning from scratch.
-- **Streaming client (Lesson 27+):** Hand-rolled `fetch` + SSE parse loop + `useState` for now — learn the raw pattern first. Server migrated to AI SDK `streamText` in Lesson 32; client `useChat` refactor deferred to Lesson 33. React Query deferred for non-streaming state (threads, session list) in a later pass.
+- **Streaming client:** Hand-rolled `fetch` + SSE (Lessons 20, 27) → AI SDK `useChat` + `data-research` parts (Lesson 33). Server on `streamText` since Lesson 32. React Query deferred for non-streaming state (threads, session list) in a later pass.
 - **Tests (Lesson 31+):** Vitest in `research-assistant/`. Mock `streamText` from `ai` (Lesson 32+) for fast CI; optional integration tests tagged separately for live API calls. Assert SSE contract on `POST /api/research` (phase order, final `done` frame shape, 400 on missing message). Extract shared `readSseStream` helper for route tests and client.
 
 ## Preferences

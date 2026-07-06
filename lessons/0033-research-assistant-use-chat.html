@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 33 — useChat Client Migration</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 33 · ~40 minutes</div>
+  <h1>useChat Client Migration</h1>
+
+  <p class="epigraph">
+    You learned the wire by hand.
+    Now let the SDK own the chat loop.
+  </p>
+
+  <p>
+    <a href="0032-research-assistant-ai-sdk-server.html">Lesson 32</a> moved the
+    server to <code>streamText</code> but deliberately kept your custom SSE frames
+    so the client and Vitest stayed stable. This lesson closes the loop: migrate
+    <code>ResearchChat.tsx</code> to <strong><code>useChat</code></strong> and
+    switch the route to the AI SDK <strong>UI Message Stream</strong> protocol —
+    with a typed <code>data-research</code> part that carries your existing
+    <code>ResearchUIState</code> snapshots.
+  </p>
+
+  <h2>What changes (and what doesn’t)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Unchanged</th>
+        <th>Migrated</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>lib/stream-research.ts</code> phase machine</td>
+        <td>Route: custom SSE → <code>createUIMessageStreamResponse</code></td>
+      </tr>
+      <tr>
+        <td><code>BriefArticle</code>, guards, sessions, upload</td>
+        <td>Client: <code>fetchEventSource</code> → <code>useChat</code></td>
+      </tr>
+      <tr>
+        <td><code>ResearchUIState</code> shape</td>
+        <td>Wire: raw JSON snapshots → <code>data-research</code> parts</td>
+      </tr>
+      <tr>
+        <td><code>previousResponseId</code> via session store</td>
+        <td>Busy/abort: manual <code>useState</code> → <code>status</code> + <code>stop()</code></td>
+      </tr>
+      <tr>
+        <td>Vitest route contract (phase order, final brief)</td>
+        <td>Test helper parses UI message stream, not raw <code>ResearchUIState</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Related:
+    <a href="../reference/research-use-chat.html">useChat research reference</a> ·
+    <a href="../reference/research-brief.html">research brief</a> ·
+    <a href="0020-fetch-stream-client.html">Lesson 20</a> (hand-rolled fetch) ·
+    <a href="0032-research-assistant-ai-sdk-server.html">Lesson 32</a> (server AI SDK).
+  </p>
+
+  <h2>Architecture after migration</h2>
+
+  <pre class="example">ResearchChat (useChat)          route.ts                    stream-research.ts
+  │                                  │                              │
+  │── POST { messages, sessionId } ─►│ createUIMessageStream        │
+  │                                  │   writer.write(data-research)│
+  │                                  │   onSnapshot → same state ───►│ streamText loop
+  │◄── UI message stream (SSE) ─────│◄─────────────────────────────│
+  │    message.parts[].data-research │                              │
+  │    status / stop / error         │                              │</pre>
+
+  <p>
+    The client no longer parses <code>data: { phase, … }</code> itself.
+    <code>useChat</code> owns message history, streaming status, and abort.
+    Your product UI still reads the same <code>ResearchUIState</code> — it just
+    lives inside a reconciled <code>data-research</code> part on the assistant
+    message.
+  </p>
+
+  <h2>Step 1 — Install the React hook</h2>
+
+  <pre class="example">cd research-assistant
+npm install @ai-sdk/react</pre>
+
+  <p>
+    You already have <code>ai</code> and <code>@ai-sdk/openai</code> from Lesson 32.
+  </p>
+
+  <h2>Step 2 — Type-safe UI messages</h2>
+
+  <p>
+    Create <code>lib/research-ui-message.ts</code>. Attach your snapshot shape as a
+    custom data part:
+  </p>
+
+  <pre class="example">import type { UIMessage } from "ai";
+import type { ResearchUIState } from "@/lib/research-state";
+
+export type ResearchUIMessage = UIMessage<
+  never,
+  { research: ResearchUIState }
+>;
+
+export function getResearchPart(message: ResearchUIMessage) {
+  return message.parts.find((p) => p.type === "data-research");
+}</pre>
+
+  <p>
+    The <code>data-research</code> prefix comes from the key in the generic
+  (<code>research</code> → <code>data-research</code>).
+  </p>
+
+  <h2>Step 3 — Route: UI message stream</h2>
+
+  <p>
+    Replace the hand-rolled <code>ReadableStream</code> in
+    <code>app/api/research/route.ts</code> with
+    <code>createUIMessageStream</code> + <code>createUIMessageStreamResponse</code>.
+    Extract the latest user text from <code>messages</code>; keep
+    <code>sessionId</code> from the request body for threading and file search.
+  </p>
+
+  <pre class="example">import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  type UIMessage,
+} from "ai";
+
+const RESEARCH_PART_ID = "research-1";
+
+export async function POST(req: Request) {
+  // … guards …
+  const { messages, sessionId } = await req.json();
+  const message = lastUserText(messages); // helper: find latest user text part
+
+  const stream = createUIMessageStream&lt;ResearchUIMessage&gt;({
+    execute: async ({ writer }) => {
+      try {
+        const previousResponseId = getLastResponseId(sessionId) ?? undefined;
+        const { vectorStoreId } = getSession(sessionId);
+
+        const responseId = await streamResearch(message, (state) => {
+          writer.write({
+            type: "data-research",
+            id: RESEARCH_PART_ID,
+            data: state,
+          });
+        }, { previousResponseId, vectorStoreId });
+
+        if (responseId) setLastResponseId(sessionId, responseId);
+      } catch (err) {
+        writer.write({
+          type: "data-research",
+          id: RESEARCH_PART_ID,
+          data: createResearchState({
+            phase: "error",
+            error: publicError(err),
+          }),
+        });
+      }
+    },
+  });
+
+  return createUIMessageStreamResponse({ stream });
+}</pre>
+
+  <p>
+    <strong>Reconciliation:</strong> reuse the same <code>id</code> on every
+    <code>writer.write</code> call. The client updates one part in place instead
+    of appending a new snapshot per frame — same UX as
+    <code>setState(snapshot)</code> on every SSE frame.
+  </p>
+
+  <h2>Step 4 — Client: useChat</h2>
+
+  <p>
+    Replace <code>fetchEventSource</code>, <code>turns</code>,
+    <code>pendingQuestion</code>, and manual <code>state</code> with
+    <code>useChat</code>:
+  </p>
+
+  <pre class="example">import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+
+const { messages, sendMessage, status, stop, setMessages, error } =
+  useChat&lt;ResearchUIMessage&gt;({
+    transport: new DefaultChatTransport({
+      api: "/api/research",
+      headers: () => authHeaders(),
+      body: () => ({ sessionId }),
+    }),
+  });
+
+const busy = status === "submitted" || status === "streaming";</pre>
+
+  <p>Send on submit:</p>
+
+  <pre class="example">sendMessage({ text: message });</pre>
+
+  <p>Render history from <code>messages</code>:</p>
+
+  <ul>
+    <li><strong>User turns</strong> — <code>message.role === "user"</code>, text from <code>part.type === "text"</code></li>
+    <li><strong>Assistant turns</strong> — <code>getResearchPart(message)?.data</code> drives <code>LiveTurn</code> / <code>BriefArticle</code></li>
+    <li><strong>In-flight</strong> — last assistant message with <code>phase !== "done"</code></li>
+    <li><strong>Errors</strong> — <code>error</code> from hook, or <code>phase === "error"</code> on the data part</li>
+  </ul>
+
+  <p>
+    <code>newChat</code>: call <code>setMessages([])</code> after clearing the
+    session server-side. Optional: wire <code>stop()</code> to a Stop button while
+    <code>status === "streaming"</code>.
+  </p>
+
+  <h2>Step 5 — Update Vitest</h2>
+
+  <p>
+    The response is still SSE, but frames follow the
+    <a href="https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol">UI message stream protocol</a>
+    — not bare <code>ResearchUIState</code> JSON. Update
+    <code>lib/read-sse-stream.ts</code> (or add a sibling helper) to track
+    <code>data-research</code> reconciliation events and extract the latest
+    <code>ResearchUIState</code>.
+  </p>
+
+  <p>Keep the same three assertions from Lesson 31:</p>
+
+  <ol>
+    <li>400 when <code>message</code> / user text is missing</li>
+    <li>401 when secret is wrong</li>
+    <li>Phase order: searching → streaming-answer → done, with brief + sources</li>
+  </ol>
+
+  <p>
+    The route now reads <code>messages</code> from the body — send a minimal
+    <code>UIMessage[]</code> with one user text part in the test request.
+  </p>
+
+  <h2>Step 6 — Cleanup</h2>
+
+  <ul>
+    <li>Remove <code>@microsoft/fetch-event-source</code> if nothing else imports it</li>
+    <li><code>npm test</code> and <code>npm run build</code> — both green</li>
+    <li><code>npm run dev</code> — multi-turn thread, upload + file search, New chat</li>
+  </ul>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Same id means the client reconciles updates into one part — your phase machine UX stays intact.","false":"Reconciliation requires reusing the same part id on every write, not a new id per snapshot."}'>
+    <h3>1. Why reuse RESEARCH_PART_ID on every write?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">So snapshots reconcile in place</button>
+      <button data-correct="false">So OpenAI caches the prompt</button>
+      <button data-correct="false">Because useChat only allows one part</button>
+      <button data-correct="false">To disable multi-turn threads</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Right. Server-side previousResponseId via session store is unchanged — useChat messages are for UI history, not OpenAI persistence.","false":"Thread continuity still flows through getLastResponseId/setLastResponseId on the server, not through the client messages array."}'>
+    <h3>2. Where does thread continuity still live?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">In the useChat messages array</button>
+      <button data-correct="true">Session store + previousResponseId on server</button>
+      <button data-correct="false">In data-research part metadata</button>
+      <button data-correct="false">DefaultChatTransport headers only</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Exactly. You earned the abstraction by building fetch + SSE first (Lessons 20 and 27).","false":"useChat still streams over HTTP SSE under the hood — you are trading manual parsing for managed message state."}'>
+    <h3>3. What did hand-rolled fetch teach you that useChat hides?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">Nothing — skip straight to useChat next time</button>
+      <button data-correct="true">Wire format, buffering, and abort lifecycle</button>
+      <button data-correct="false">How to call openai.responses.stream directly</button>
+      <button data-correct="false">That EventSource supports POST bodies</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <h2>Steps checklist</h2>
+
+  <ol>
+    <li>Install <code>@ai-sdk/react</code></li>
+    <li>Add <code>lib/research-ui-message.ts</code> with <code>ResearchUIMessage</code></li>
+    <li>Migrate <code>app/api/research/route.ts</code> to <code>createUIMessageStreamResponse</code></li>
+    <li>Wire <code>onSnapshot</code> → <code>writer.write({ type: "data-research", … })</code></li>
+    <li>Refactor <code>ResearchChat.tsx</code> to <code>useChat</code> + <code>DefaultChatTransport</code></li>
+    <li>Render from <code>messages</code> and <code>getResearchPart</code></li>
+    <li>Update route tests for UI message stream + <code>messages</code> body</li>
+    <li>Remove <code>fetch-event-source</code>; verify test + build + manual QA</li>
+  </ol>
+
+  <p>
+    <strong>Full-stack AI SDK migration complete.</strong> Next options: cross-provider
+    comparison (mission criterion #4 — Anthropic/Gemini tool + streaming patterns),
+    or React Query for session/thread list state.
+  </p>
+
+  <p class="source">
+    Primary source:
+    <a href="https://ai-sdk.dev/docs/ai-sdk-ui/chatbot">AI SDK — Chatbot (useChat)</a> ·
+    <a href="https://ai-sdk.dev/docs/ai-sdk-ui/streaming-data">Streaming Custom Data</a> ·
+    <a href="https://ai-sdk.dev/docs/ai-sdk-ui/transport">Transport</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
