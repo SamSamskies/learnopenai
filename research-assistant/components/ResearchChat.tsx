@@ -2,7 +2,41 @@
 
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { createResearchState, dedupeCitations } from "@/lib/research-state";
+
+function formatBriefPreview(preview: string): string {
+  try {
+    return JSON.stringify(JSON.parse(preview), null, 2);
+  } catch {
+    return preview;
+  }
+}
+
+const briefMarkdownComponents: Components = {
+  p: ({ children }) => <p className="mt-2 first:mt-0">{children}</p>,
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="text-blue-600 underline underline-offset-2 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+    >
+      {children}
+    </a>
+  ),
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  ul: ({ children }) => <ul className="mt-2 list-disc pl-5">{children}</ul>,
+  ol: ({ children }) => <ol className="mt-2 list-decimal pl-5">{children}</ol>,
+  li: ({ children }) => <li className="mt-1">{children}</li>,
+};
+
+const inlineMarkdownComponents: Components = {
+  ...briefMarkdownComponents,
+  p: ({ children }) => <>{children}</>,
+};
 
 export function ResearchChat() {
   const [state, setState] = useState(createResearchState());
@@ -75,41 +109,70 @@ export function ResearchChat() {
       {state.phase === "searching" && <p>Searching the web…</p>}
 
       {(state.phase === "streaming-answer" || state.phase === "done") &&
-        state.answerPreview && (
+        state.briefPreview && (
           <details
             open={state.phase === "streaming-answer"}
             className="rounded-lg border border-zinc-300 dark:border-zinc-600"
           >
             <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400">
-              Live draft
+              Brief preview
             </summary>
-            <p className="border-t border-zinc-300 px-4 py-3 text-sm whitespace-pre-wrap dark:border-zinc-600">
-              {state.answerPreview}
-            </p>
+            <pre className="overflow-x-auto border-t border-zinc-300 px-4 py-3 font-mono text-sm whitespace-pre-wrap dark:border-zinc-600">
+              {formatBriefPreview(state.briefPreview)}
+            </pre>
           </details>
         )}
 
-      {state.phase === "done" && (
-        <>
-          <p>{state.answer}</p>
+      {state.phase === "done" && state.brief && (
+        <article className="rounded-lg border border-zinc-300 p-4 dark:border-zinc-600">
+          <h2 className="text-lg font-semibold">{state.brief.headline}</h2>
+          <div className="mt-2 text-sm">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={briefMarkdownComponents}
+            >
+              {state.brief.summary}
+            </ReactMarkdown>
+          </div>
+          <ul className="mt-3 list-disc pl-5 text-sm">
+            {state.brief.key_points.map((point) => (
+              <li key={point}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={inlineMarkdownComponents}
+                >
+                  {point}
+                </ReactMarkdown>
+              </li>
+            ))}
+          </ul>
           {state.citations.length > 0 && (
-            <ul className="flex flex-col gap-2 pl-5 list-disc marker:text-zinc-400">
-              {dedupeCitations(state.citations).map((c) => (
-                <li key={c.url}>
-                  <a
-                    href={c.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 underline underline-offset-2 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                  >
-                    {c.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <div className="mt-4 border-t border-zinc-300 pt-4 dark:border-zinc-600">
+              <h3 className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                Sources
+              </h3>
+              <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+                {dedupeCitations(state.citations).map((c) => (
+                  <li key={c.url}>
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 underline underline-offset-2 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      {c.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
-        </>
+          <p className="mt-4 text-xs uppercase tracking-wide text-zinc-500">
+            Confidence: {state.brief.confidence}
+          </p>
+        </article>
       )}
+
       {state.phase === "error" && <p>{state.error}</p>}
     </>
   );

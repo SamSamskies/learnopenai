@@ -1,5 +1,7 @@
 import "server-only";
 
+import { zodTextFormat } from "openai/helpers/zod";
+import { ResearchBrief } from "@/lib/schemas";
 import type { Response } from "openai/resources/responses/responses";
 import { openai } from "@/lib/openai";
 import {
@@ -11,18 +13,6 @@ import {
 
 export type { Citation, ResearchPhase, ResearchUIState } from "@/lib/research-state";
 export { createResearchState } from "@/lib/research-state";
-
-function extractOutputText(response: Response): string {
-  if (response.output_text) return response.output_text;
-
-  const message = response.output
-    .filter((item) => item.type === "message")
-    .at(-1);
-  const textContent = message?.content?.find(
-    (part) => part.type === "output_text"
-  );
-  return textContent?.text ?? "";
-}
 
 function extractUrlCitations(response: Response): Citation[] {
   const message = response.output
@@ -45,16 +35,14 @@ export async function streamResearch(
   const state = createResearchState({ phase: "searching" });
   onSnapshot(state);
 
-  const stream = await openai.responses.create({
+  const stream = openai.responses.stream({
     model: "gpt-5-mini",
     instructions:
-      "You are a research assistant for solo builders. Answer clearly and concisely. Cite sources when you use web search.",
+      "You are a research assistant for solo builders. Search the web when the question needs current or factual grounding. Return a structured brief grounded in what you find.",
     input: message,
     tools: [{ type: "web_search", search_context_size: "low" }],
-    stream: true,
+    text: { format: zodTextFormat(ResearchBrief, "research_brief") },
   });
-
-  let finalText = "";
 
   for await (const event of stream) {
     if (
@@ -70,27 +58,22 @@ export async function streamResearch(
       event.type === "response.output_item.added" &&
       event.item.type === "message"
     ) {
-      state.answerPreview = "";
+      state.briefPreview = "";
     }
 
     if (event.type === "response.output_text.delta") {
       state.phase = "streaming-answer";
-      state.answerPreview += event.delta;
-      onSnapshot({ ...state });
-    }
-
-    if (event.type === "response.output_text.done") {
-      finalText = event.text;
-    }
-
-    if (event.type === "response.completed") {
-      state.answer = finalText || state.answerPreview || extractOutputText(event.response);
-      state.citations = extractUrlCitations(event.response);
-      state.searched = event.response.output.some(
-        (item) => item.type === "web_search_call"
-      );
-      state.phase = "done";
+      state.briefPreview += event.delta;
       onSnapshot({ ...state });
     }
   }
+
+  const response = await stream.finalResponse();
+  state.brief = response.output_parsed ?? null;
+  state.citations = extractUrlCitations(response);
+  state.searched = response.output.some(
+    (item) => item.type === "web_search_call"
+  );
+  state.phase = "done";
+  onSnapshot({ ...state });
 }

@@ -1,3 +1,5 @@
+import type { ResearchBrief } from "@/lib/schemas";
+
 export type Citation = { title: string; url: string };
 
 export type ResearchPhase =
@@ -9,8 +11,8 @@ export type ResearchPhase =
 
 export type ResearchUIState = {
   phase: ResearchPhase;
-  answerPreview: string;
-  answer: string | null;
+  briefPreview: string;
+  brief: ResearchBrief | null;
   citations: Citation[];
   searched: boolean;
   error: string | null;
@@ -39,8 +41,8 @@ export function createResearchState(
 ): ResearchUIState {
   return {
     phase: "idle",
-    answerPreview: "",
-    answer: null,
+    briefPreview: "",
+    brief: null,
     citations: [],
     searched: false,
     error: null,
