@@ -106,7 +106,9 @@ export function ResearchChat() {
         </button>
       </form>
 
-      {state.phase === "searching" && <p>Searching the web…</p>}
+      {state.phase === "searching" && (
+        <p>{state.searched ? "Searching the web…" : "Working…"}</p>
+      )}
 
       {(state.phase === "streaming-answer" || state.phase === "done") &&
         state.briefPreview && (
@@ -167,9 +169,12 @@ export function ResearchChat() {
               </ul>
             </div>
           )}
-          <p className="mt-4 text-xs uppercase tracking-wide text-zinc-500">
-            Confidence: {state.brief.confidence}
-          </p>
+          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs uppercase tracking-wide text-zinc-500">
+            <span>
+              {state.searched ? "Grounded with web search" : "No web search"}
+            </span>
+            <span>Confidence: {state.brief.confidence}</span>
+          </div>
         </article>
       )}
 
