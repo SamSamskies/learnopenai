@@ -38,26 +38,39 @@ const inlineMarkdownComponents: Components = {
   p: ({ children }) => <>{children}</>,
 };
 
+function resizeTextarea(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+}
+
 export function ResearchChat() {
   const [state, setState] = useState(createResearchState());
+  const [input, setInput] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const message = new FormData(form).get("message");
-    if (typeof message !== "string" || !message.trim()) return;
+  const busy =
+    state.phase !== "idle" &&
+    state.phase !== "done" &&
+    state.phase !== "error";
 
+  const canSend = input.trim().length > 0 && !busy;
+
+  async function sendMessage(message: string) {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
     setState(createResearchState({ phase: "searching" }));
+    setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
 
     try {
       await fetchEventSource("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: message.trim() }),
+        body: JSON.stringify({ message }),
         signal: abortRef.current.signal,
         async onopen(response) {
           if (!response.ok) {
@@ -82,30 +95,24 @@ export function ResearchChat() {
     }
   }
 
-  const busy =
-    state.phase !== "idle" &&
-    state.phase !== "done" &&
-    state.phase !== "error";
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const message = input.trim();
+    if (!message || busy) return;
+    void sendMessage(message);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      const message = input.trim();
+      if (!message || busy) return;
+      void sendMessage(message);
+    }
+  }
 
   return (
-    <>
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <textarea
-          name="message"
-          className="min-h-32 w-full resize-y rounded-lg border border-zinc-300 bg-white px-4 py-3 text-base text-foreground outline-none placeholder:text-zinc-500 focus:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:placeholder:text-zinc-400 dark:focus:border-zinc-500"
-          placeholder="Ask a research question…"
-          rows={4}
-          disabled={busy}
-        />
-        <button
-          type="submit"
-          disabled={busy}
-          className="self-end rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          Send
-        </button>
-      </form>
-
+    <div className="flex flex-col gap-6">
       {state.phase === "searching" && (
         <p>{state.searched ? "Searching the web…" : "Working…"}</p>
       )}
@@ -179,6 +186,42 @@ export function ResearchChat() {
       )}
 
       {state.phase === "error" && <p>{state.error}</p>}
-    </>
+
+      <form
+        onSubmit={onSubmit}
+        className="flex items-end gap-2 rounded-2xl border border-zinc-300 bg-white p-2 pl-4 shadow-sm focus-within:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:focus-within:border-zinc-500"
+      >
+        <textarea
+          ref={textareaRef}
+          name="message"
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            resizeTextarea(e.target);
+          }}
+          onKeyDown={onKeyDown}
+          rows={1}
+          className="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent py-2.5 text-base text-foreground outline-none placeholder:text-zinc-500 disabled:cursor-not-allowed disabled:opacity-50 dark:placeholder:text-zinc-400"
+          placeholder="Ask a research question…"
+          disabled={busy}
+        />
+        <button
+          type="submit"
+          disabled={!canSend}
+          aria-label="Send message"
+          className="mb-1 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-zinc-900 text-white transition-colors disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:bg-zinc-100 dark:text-zinc-900 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-500"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="h-[18px] w-[18px]"
+            aria-hidden
+          >
+            <path d="M12 4 7.25 10.75H10.5v8.25h3v-8.25H16.75L12 4z" />
+          </svg>
+        </button>
+      </form>
+    </div>
   );
 }
