@@ -27,6 +27,13 @@ Responses API, streaming, tool calling, structured outputs, image generation, fi
 - **Streaming client:** Hand-rolled `fetch` + SSE (Lessons 20, 27) → AI SDK `useChat` + `data-research` parts (Lesson 33). Server on `streamText` since Lesson 32. React Query deferred for non-streaming state (threads, session list) in a later pass.
 - **Tests (Lesson 31+):** Vitest in `research-assistant/`. Mock `streamText` from `ai` (Lesson 32+) for fast CI; optional integration tests tagged separately for live API calls. Assert SSE contract on `POST /api/research` (phase order, final `done` frame shape, 400 on missing message). Extract shared `readSseStream` helper for route tests and client.
 
+## AI-native design (session 34+)
+
+- **Goal:** Fluency in AI-native design tools generically, starting with Google Stitch — not a separate repo for now.
+- **Lesson 34:** Full Research Assistant redesign in Stitch (one page, five UI phases). Export `DESIGN.md` to `research-assistant/`.
+- **Lesson 35:** Apply `DESIGN.md` to `ResearchChat.tsx` — visuals only, behavior unchanged.
+- **Reference:** [reference/google-stitch.html](./reference/google-stitch.html).
+
 ## Preferences
 
 - **No org ID / KYC:** Will not verify OpenAI organization for gated features (e.g. reasoning summaries). Practice scripts should not require it.

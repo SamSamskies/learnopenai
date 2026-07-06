@@ -77,7 +77,20 @@ Use when evaluating doc-Q&A build vs buy beyond OpenAI. Full table in [reference
 - [Qdrant Cloud](https://qdrant.tech/pricing/) — ~1 GB permanent free tier; same DIY pattern as Pinecone.
 - [Claude Files API](https://platform.claude.com/docs/en/build-with-claude/files) — attach files to messages; no hosted semantic corpus search equivalent to `file_search`.
 
+## AI-native design (Lessons 34+)
+
+- [Google — Introducing vibe design with Stitch](https://blog.google/innovation-and-ai/models-and-research/google-labs/stitch-ai-ui-design/)
+  AI-native canvas, design agent, DESIGN.md, voice iteration, MCP. Use for: Lesson 34 mental model and prompt strategy.
+- [Google Developers Blog — Stitch overview](https://developers.googleblog.com/stitch-a-new-way-to-design-uis/)
+  Launch post: text/image → UI, Figma paste, front-end code export. Use for: what Stitch generates and export options.
+- [Stitch](https://stitch.withgoogle.com)
+  The tool itself. Use for: hands-on Lesson 34 exercises.
+- [reference/google-stitch.html](./reference/google-stitch.html)
+  Workspace glossary and workflow cheat sheet. Use for: quick lookup across design lessons.
+
 ## Gaps
 
 - Broader Responses API patterns → Anthropic Messages API / Google Gemini (streaming, tools, state) — partial RAG comparison above
 - Cost budgeting guide for solo builders doing API experimentation
+- Stitch MCP server official docs (integration with Cursor) — Lesson 35+ optional
+- Comparative guide: Stitch vs v0 vs Figma Make for solo builders

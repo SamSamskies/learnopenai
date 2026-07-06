@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Stitch — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Google Stitch</h1>
+  <p class="subtitle">AI-native design canvas — prompt → iterate → export DESIGN.md → code.</p>
+
+  <h2>What it is</h2>
+  <p>
+    <a href="https://stitch.withgoogle.com">Stitch</a> (Google Labs) turns natural
+    language and images into high-fidelity UI mockups. It is not a code editor —
+    it is a design environment with a design agent, infinite canvas, and exports
+    that bridge to development tools (Figma, front-end code, <code>DESIGN.md</code>,
+    MCP).
+  </p>
+
+  <h2>Glossary</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Term</th>
+        <th>Meaning</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Vibe design</td>
+        <td>Start from business intent, user feeling, and references — not wireframes</td>
+      </tr>
+      <tr>
+        <td>Canvas</td>
+        <td>Infinite workspace; multiple screens and context (images, text, code)</td>
+      </tr>
+      <tr>
+        <td>Design agent</td>
+        <td>Reasons across the whole project; accepts chat and voice critique</td>
+      </tr>
+      <tr>
+        <td>Agent manager</td>
+        <td>Parallel design directions without losing organization</td>
+      </tr>
+      <tr>
+        <td>DESIGN.md</td>
+        <td>Agent-friendly markdown export: colors, type, spacing, components</td>
+      </tr>
+      <tr>
+        <td>Play mode</td>
+        <td>Link screens into clickable prototype flows</td>
+      </tr>
+      <tr>
+        <td>Stitch MCP</td>
+        <td>Connect Stitch to IDEs/agents for design context in coding sessions</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Workflow (generic)</h2>
+  <pre class="example">1. Intent    — who is the user, what should they feel, what job does the UI do?
+2. Inventory — list regions + states (even on a single page)
+3. Generate  — starter prompt → multiple screens on canvas
+4. Iterate   — targeted follow-ups per screen (not full regen)
+5. Prototype — optional Play mode for click-through validation
+6. Export    — DESIGN.md (for agents) and/or Figma / front-end code
+7. Implement — apply design system in your repo (see Lesson 35)</pre>
+
+  <h2>Prompt structure</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Section</th>
+        <th>Include</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Product</td>
+        <td>Name, audience, one-sentence job-to-be-done</td>
+      </tr>
+      <tr>
+        <td>Platform</td>
+        <td>Web / mobile, width, light/dark</td>
+      </tr>
+      <tr>
+        <td>Brand feel</td>
+        <td>Adjectives + anti-patterns (“no purple AI gradients”)</td>
+      </tr>
+      <tr>
+        <td>Chrome</td>
+        <td>Persistent header, nav, composer</td>
+      </tr>
+      <tr>
+        <td>Screens</td>
+        <td>One subsection per state with sample content</td>
+      </tr>
+      <tr>
+        <td>Typography</td>
+        <td>Hierarchy expectations, density, whitespace</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Model tips</h2>
+  <ul>
+    <li><strong>Gemini 3.1</strong> — better first-pass layout and prompt interpretation</li>
+    <li><strong>Gemini 3 Flash</strong> — faster; good for quick variants</li>
+    <li><strong>Nano Banana</strong> — remix / bolder visual directions via Redesign</li>
+  </ul>
+  <p>Credits: free tier (~400/day at time of writing). New projects cost more than single edits.</p>
+
+  <h2>Exports</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Export</th>
+        <th>Use when</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>DESIGN.md</code></td>
+        <td>Implementing in Cursor / Claude Code with an agent</td>
+      </tr>
+      <tr>
+        <td>Paste to Figma</td>
+        <td>Hand-off to a design team or Figma design system</td>
+      </tr>
+      <tr>
+        <td>Front-end code</td>
+        <td>Quick static HTML/CSS starting point (still review + integrate)</td>
+      </tr>
+      <tr>
+        <td>Stitch MCP</td>
+        <td>Pull live design context into agentic IDE sessions</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Single-page apps</h2>
+  <p>
+    One route ≠ one screen. Map every <code>phase</code> or conditional region
+    as a separate artboard. Persistent chrome (header, composer) must match
+    across all of them. See
+    <a href="../lessons/0034-research-assistant-stitch-redesign.html">Lesson 34</a>.
+  </p>
+
+  <h2>Primary sources</h2>
+  <ul>
+    <li><a href="https://blog.google/innovation-and-ai/models-and-research/google-labs/stitch-ai-ui-design/">Google — vibe design with Stitch</a></li>
+    <li><a href="https://developers.googleblog.com/stitch-a-new-way-to-design-uis/">Google Developers Blog — Stitch overview</a></li>
+    <li><a href="https://stitch.withgoogle.com">stitch.withgoogle.com</a></li>
+  </ul>
+
+  <footer>
+    <p>Lessons: <a href="../lessons/0034-research-assistant-stitch-redesign.html">34 — Stitch redesign</a> · <a href="../lessons/0035-research-assistant-design-to-code.html">35 — design to code</a></p>
+  </footer>
+</body>
+</html>

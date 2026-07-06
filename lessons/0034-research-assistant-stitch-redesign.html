@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 34 — Redesign Research Assistant in Stitch</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 34 · ~45 minutes</div>
+  <h1>Redesign Research Assistant in Stitch</h1>
+
+  <p class="epigraph">
+    One screen. Many states.
+    Design them all before you code.
+  </p>
+
+  <p>
+    <a href="0033-research-assistant-use-chat.html">Lesson 33</a> finished the
+    AI SDK migration — the app works, but it still looks like a prototype.
+    This lesson uses <strong>Google Stitch</strong> to redesign the entire
+    Research Assistant surface in one pass. Because the app is a single page,
+    you can treat it as one Stitch project with multiple artboards for each UI
+    phase.
+  </p>
+
+  <p>
+    Related:
+    <a href="../reference/google-stitch.html">Google Stitch reference</a> ·
+    <a href="../reference/research-assistant.html">Research Assistant reference</a> ·
+    <a href="0033-research-assistant-use-chat.html">Lesson 33</a> (current UI).
+    Next:
+    <a href="0035-research-assistant-design-to-code.html">Lesson 35</a> (implement
+    <code>DESIGN.md</code> in code).
+  </p>
+
+  <h2>What you will produce</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Artifact</th>
+        <th>Where it lives</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>High-fidelity mockups for every UI phase</td>
+        <td>Stitch canvas at <a href="https://stitch.withgoogle.com">stitch.withgoogle.com</a></td>
+      </tr>
+      <tr>
+        <td><code>DESIGN.md</code> — colors, type, spacing, components</td>
+        <td><code>research-assistant/DESIGN.md</code> (export from Stitch)</td>
+      </tr>
+      <tr>
+        <td>Screenshot of current app (optional context)</td>
+        <td>Upload to Stitch canvas</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    You are <em>not</em> writing React in this lesson. Lesson 35 applies the
+    design system to <code>ResearchChat.tsx</code>.
+  </p>
+
+  <h2>Step 0 — Inventory the one screen</h2>
+
+  <p>
+    <code>ResearchChat.tsx</code> is the whole product UI. It has persistent
+    chrome and transient states driven by <code>ResearchUIState.phase</code>.
+    Map these before you prompt:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th>
+        <th>Always visible?</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Header — title, Upload, New chat</td>
+        <td>Yes</td>
+        <td>Upload accepts .pdf, .md, .txt</td>
+      </tr>
+      <tr>
+        <td>Uploaded file chips</td>
+        <td>When files indexed</td>
+        <td>Show filename badges above thread</td>
+      </tr>
+      <tr>
+        <td>Empty state</td>
+        <td>Before first message</td>
+        <td>Invite a research question; no thread yet</td>
+      </tr>
+      <tr>
+        <td>User bubble</td>
+        <td>Per turn</td>
+        <td>“You” label + question text</td>
+      </tr>
+      <tr>
+        <td>Searching</td>
+        <td><code>phase === "searching"</code></td>
+        <td>“Searching the web…” / docs / both</td>
+      </tr>
+      <tr>
+        <td>Brief preview</td>
+        <td><code>streaming-answer</code></td>
+        <td>Collapsible raw JSON while streaming</td>
+      </tr>
+      <tr>
+        <td>Research brief card</td>
+        <td><code>phase === "done"</code></td>
+        <td>Headline, summary, key points, sources, confidence</td>
+      </tr>
+      <tr>
+        <td>Error</td>
+        <td><code>phase === "error"</code></td>
+        <td>Human-readable failure message</td>
+      </tr>
+      <tr>
+        <td>Composer</td>
+        <td>Yes</td>
+        <td>Auto-growing textarea + send button; pinned bottom</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+  Brief schema fields (for the done-state card):
+  <code>headline</code>, <code>summary</code>, <code>key_points[]</code>,
+  <code>confidence</code> (low | medium | high), plus a Sources list (URLs and
+  file names) and grounding badges (“Grounded with web search”, etc.).
+  </p>
+
+  <h2>Step 1 — Open Stitch and start a project</h2>
+
+  <ol>
+    <li>Go to <a href="https://stitch.withgoogle.com">stitch.withgoogle.com</a> and sign in with your Google account.</li>
+    <li>Create a new project. Name it <strong>Research Assistant</strong>.</li>
+    <li>In model settings, prefer <strong>Gemini 3.1</strong> for the first pass (better layout interpretation than Flash). You can remix with Nano Banana later for bolder visuals.</li>
+    <li>Optional: run <code>npm run dev</code> in <code>research-assistant/</code>, screenshot the current page, and drop it on the canvas as reference — not as the target look.</li>
+  </ol>
+
+  <h2>Step 2 — Paste the starter prompt</h2>
+
+  <p>
+    Copy this prompt into Stitch’s project description or first generation
+    request. It asks for five screens — empty, searching, streaming, done, and
+    error — on one cohesive design system.
+  </p>
+
+  <pre class="example">Design a single-page web app called "Research Assistant" for solo builders who research topics with AI.
+
+Platform: desktop web, max content width ~680px, centered on a light neutral page background. Support light mode first; subtle dark mode variant optional.
+
+Brand feel: calm, editorial, trustworthy — like a sharp research brief, not a generic chatbot. Avoid purple gradients and stock "AI sparkle" clichés.
+
+Persistent chrome (every screen):
+- Header row: app title "Research Assistant" on the left; "Upload" and "New chat" text buttons on the right (Upload indexes PDF/MD/TXT for grounded answers).
+- Bottom composer: rounded input bar with placeholder "Ask a research question…", auto-growing textarea feel, circular send button on the right. Composer stays fixed at bottom.
+
+Screen 1 — Empty state:
+- No conversation yet. Short welcome line inviting a research question.
+- Composer enabled.
+
+Screen 2 — Searching:
+- User bubble: label "You", question "What changed in Next.js App Router in 2025?"
+- Status line: "Searching the web…" with subtle progress indicator.
+- Composer disabled while working.
+
+Screen 3 — Streaming answer:
+- Same user bubble.
+- Collapsible "Brief preview" panel showing monospace JSON being filled in (structured brief streaming).
+- Composer disabled.
+
+Screen 4 — Done (research brief card):
+- User bubble + a prominent brief card with:
+  - headline (large)
+  - summary paragraph (2–3 sentences)
+  - bulleted key_points (3–5 items)
+  - Sources section: linked titles for web URLs + file icons for uploaded docs
+  - footer meta row: "Grounded with web search", "Grounded with documents", "Confidence: high"
+- Show a second older turn above (faded) to imply multi-turn thread.
+- Composer enabled.
+
+Screen 5 — Error:
+- User bubble + inline error message in accessible red tone.
+- Composer enabled so user can retry.
+
+Typography: clear hierarchy (display title, section labels, body, meta captions). Generous whitespace. Rounded cards with subtle borders, not heavy shadows.</pre>
+
+  <p>
+    Stitch may generate up to five starter screens in one shot. Review all of
+    them on the infinite canvas before iterating.
+  </p>
+
+  <h2>Step 3 — Iterate with targeted follow-ups</h2>
+
+  <p>
+    Vibe design is conversational. Use short, specific prompts per screen —
+    don’t regenerate the whole project unless the direction is wrong.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Goal</th>
+        <th>Example follow-up prompt</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Polish the brief card</td>
+        <td>“Make the research brief card feel more editorial: stronger headline, summary in slightly larger body text, key points as a clean numbered list, sources in a compact link list with external-link icons.”</td>
+      </tr>
+      <tr>
+        <td>Improve empty state</td>
+        <td>“Replace generic welcome copy with one line: ‘Ask anything — I’ll search the web and your uploaded docs.’ Add three subtle example question chips users can click.”</td>
+      </tr>
+      <tr>
+        <td>Clarify streaming</td>
+        <td>“In the streaming screen, show the brief preview panel half-open with a pulsing cursor in the JSON — make it obvious this is interim, not the final brief.”</td>
+      </tr>
+      <tr>
+        <td>Upload affordance</td>
+        <td>“Add a row of small file chips under the header when documents are indexed: pill badges with file icon + filename.”</td>
+      </tr>
+      <tr>
+        <td>Explore direction</td>
+        <td>“Show me three color palette variants: warm paper, cool slate, and high-contrast ink.”</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Tip: Stitch’s design agent can reason across the whole canvas. Point at a
+    specific screen when you critique — “on the Done screen, increase contrast
+    on source links.”
+  </p>
+
+  <h2>Step 4 — Stitch screens into a flow (optional)</h2>
+
+  <p>
+    Use Stitch’s <strong>Play</strong> mode to link screens: Empty → Searching →
+    Streaming → Done. Click-through validates that transitions feel natural
+    before you commit to code. You only have one route (
+    <code>app/page.tsx</code>) — the flow is logical, not navigational.
+  </p>
+
+  <h2>Step 5 — Export DESIGN.md</h2>
+
+  <ol>
+    <li>When you are happy with the design system (not every pixel — the system matters), open Stitch export options.</li>
+    <li>Select <strong>DESIGN.md</strong>. Stitch extracts colors (hex), typography, spacing scale, and component patterns from your canvas.</li>
+    <li>Save the file to <code>research-assistant/DESIGN.md</code> in this repo.</li>
+    <li>Skim the export. Add any rules Stitch missed — e.g. “brief card always uses <code>rounded-xl</code>”, “source links open in new tab”.</li>
+  </ol>
+
+  <p>
+    <code>DESIGN.md</code> is the bridge to Cursor. In Lesson 35 you will ask
+    the agent to restyle <code>ResearchChat.tsx</code> against this file while
+    keeping all behavior identical.
+  </p>
+
+  <h2>Step 6 — Sanity check before you leave Stitch</h2>
+
+  <ul>
+    <li>All five phases are represented and visually distinct</li>
+    <li>Header + composer are consistent across screens</li>
+    <li>Brief card shows every field: headline, summary, key points, sources, confidence, grounding badges</li>
+    <li>Error and disabled states are obvious</li>
+    <li><code>DESIGN.md</code> is committed (or ready to commit) in <code>research-assistant/</code></li>
+  </ul>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. DESIGN.md is an agent-friendly design system export — colors, type, spacing — not production React.","false":"DESIGN.md captures design rules for coding agents; React implementation happens in your repo (Lesson 35)."}'>
+    <h3>1. What does DESIGN.md export contain?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Agent-readable design system rules</button>
+      <button data-correct="false">Production React component source code</button>
+      <button data-correct="false">Vector store metadata for uploaded files</button>
+      <button data-correct="false">OpenAI API request configuration headers</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Right. phase drives searching, streaming, done, and error — each needs a mockup even on one page.","false":"A single-screen app still has multiple UI phases; design each one on the Stitch canvas."}'>
+    <h3>2. Why design five screens for one page?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">One screen still has many phases</button>
+      <button data-correct="false">Stitch only supports one screen total</button>
+      <button data-correct="false">React requires separate route files each</button>
+      <button data-correct="false">Upload API needs distinct endpoints too</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Exactly. Stitch vibe design starts with intent and feeling, not implementation details.","false":"Start with user intent and emotional tone; Tailwind classes and Zod schemas come later in code."}'>
+    <h3>3. What should the first Stitch prompt lead with?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Business goal and user feeling</button>
+      <button data-correct="false">Final Tailwind class name list</button>
+      <button data-correct="false">Zod schema field definitions first</button>
+      <button data-correct="false">Vitest mock implementation details</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <h2>Steps checklist</h2>
+
+  <ol>
+    <li>Inventory UI regions and <code>ResearchUIState</code> phases</li>
+    <li>Create Stitch project; optional screenshot of current app</li>
+    <li>Paste starter prompt; generate five screens</li>
+    <li>Iterate with targeted follow-ups per screen</li>
+    <li>Optional: link screens in Play mode</li>
+    <li>Export <code>DESIGN.md</code> → <code>research-assistant/DESIGN.md</code></li>
+    <li>Sanity-check all phases; proceed to <a href="0035-research-assistant-design-to-code.html">Lesson 35</a></li>
+  </ol>
+
+  <p>
+    <strong>Design pass complete.</strong> You now have a transferable skill:
+    describe a product in natural language, iterate on an AI-native canvas, and
+    export an agent-readable design system — not just prettier screenshots.
+  </p>
+
+  <p class="source">
+    Primary source:
+    <a href="https://blog.google/innovation-and-ai/models-and-research/google-labs/stitch-ai-ui-design/">Google — Introducing vibe design with Stitch</a> ·
+    <a href="https://developers.googleblog.com/stitch-a-new-way-to-design-uis/">Google Developers Blog — Stitch overview</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste your Stitch prompt, a screenshot, or your exported DESIGN.md.</p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -8,6 +8,10 @@ Become a proficient AI Product Engineer who can design, build, and ship products
 
 **Research Assistant** — a Next.js app for solo builders to research topics with web search, streaming answers, citations, multi-turn threads, and optional uploaded docs. Built incrementally in Lessons 25+ inside `research-assistant/`. Reuses the triage capstone architecture (server boundary, SSE UI snapshots, guards, `previous_response_id`) with a research-shaped product surface.
 
+## Parallel track: AI-native design (Lessons 34+)
+
+Become fluent in **design-to-code workflows** with AI-native tools — starting with Google Stitch. Skills transfer across tools: prompt a product intent, iterate on an infinite canvas, export `DESIGN.md`, implement in Cursor. Lesson 34 redesigns the full Research Assistant surface in Stitch; Lesson 35 applies the export to `ResearchChat.tsx`.
+
 ## Success looks like
 
 - Ship the Research Assistant end-to-end (streaming UI, web search, citations, multi-turn threads, doc upload, hardened routes) — Lesson 31 complete
@@ -16,6 +20,7 @@ Become a proficient AI Product Engineer who can design, build, and ship products
 - Manage conversation state, prompt caching, and background mode with intentional tradeoffs — not cargo-culting
 - Read OpenAI docs and changelog and know what changed and what it means for a product
 - Explain how OpenAI platform concepts map to Anthropic, Google, etc. when evaluating alternatives
+- Use AI-native design tools (Stitch first) to go from product intent → high-fidelity UI → agent-readable design system → shipped frontend
 
 ## Constraints
 
