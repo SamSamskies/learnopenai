@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 30 — Doc Upload</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 30 · ~35 minutes</div>
+  <h1>Doc Upload</h1>
+
+  <p class="epigraph">
+    Web search finds what changed.
+    File search finds what you uploaded.
+  </p>
+
+  <p>
+    <a href="0029-research-assistant-threads.html">Lesson 29</a> chains follow-ups
+    with <code>previous_response_id</code>. Every answer still comes from
+    <code>web_search</code>. Real research also means <strong>your</strong> docs —
+    a product spec, a PDF report, meeting notes. You learned the hosted RAG
+    pipeline in <a href="0017-file-search.html">Lesson 17</a> and mixed tools in
+    <a href="0021-triage-with-file-search.html">Lesson 21</a>. This lesson adds
+    upload + <code>file_search</code> to <code>research-assistant/</code> so
+    briefs cite uploaded files <em>and</em> web sources.
+  </p>
+
+  <h2>What changes</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Lesson 29</th>
+        <th>This lesson</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>web_search</code> only</td>
+        <td><code>web_search</code> + <code>file_search</code> when docs exist</td>
+      </tr>
+      <tr>
+        <td>Session stores <code>lastResponseId</code></td>
+        <td>Session also stores <code>vectorStoreId</code> + file list</td>
+      </tr>
+      <tr>
+        <td><code>url_citation</code> in Sources</td>
+        <td>URLs + <code>file_citation</code> filenames</td>
+      </tr>
+      <tr>
+        <td>—</td>
+        <td><strong>Upload</strong> control + <code>POST /api/upload</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Quick reference:
+    <a href="../reference/file-search.html">file search</a> ·
+    <a href="../reference/research-assistant.html">research assistant</a>.
+  </p>
+
+  <h2>Two tools, one stream</h2>
+
+  <p>
+    Unlike triage (backlog vs docs are mutually exclusive paths), research often
+    needs <strong>both</strong> in one answer — e.g. “Compare our spec to what
+    competitors shipped this month.” Register both tools; write
+    <code>instructions</code> that say when to use each. The model may call
+    <code>file_search</code>, <code>web_search</code>, both, or neither.
+  </p>
+
+  <pre class="example">tools: [
+  { type: "web_search", search_context_size: "low" },
+  ...(vectorStoreId
+    ? [{ type: "file_search", vector_store_ids: [vectorStoreId], max_num_results: 3 }]
+    : []),
+]</pre>
+
+  <p>
+    Still <strong>one</strong> <code>responses.stream()</code> call per user
+    message — same id rule as Lesson 29. Save <code>finalResponse().id</code>.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Event</th>
+        <th>UI signal</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>web_search_call</code> added</td>
+        <td><code>searched = true</code> — “Searching the web…”</td>
+      </tr>
+      <tr>
+        <td><code>file_search_call</code> added</td>
+        <td><code>searchedDocs = true</code> — “Searching documents…”</td>
+      </tr>
+      <tr>
+        <td><code>output_text.delta</code></td>
+        <td><code>streaming-answer</code> — brief JSON preview</td>
+      </tr>
+      <tr>
+        <td><code>finalResponse()</code></td>
+        <td>Merge <code>url_citation</code> + <code>file_citation</code> annotations</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Architecture</h2>
+
+  <pre class="example">Browser              POST /api/upload           OpenAI Files API
+  │  FormData(file)         │                         │
+  │────────────────────────►│ ensure vector store     │
+  │                         │ files.create + index    │
+  │◄── { filename } ────────│ vectorStores.files…     │
+
+Browser              POST /api/research           OpenAI Responses
+  │  { message, sessionId } │                         │
+  │────────────────────────►│ tools: web + file?      │
+  │◄── SSE snapshots ───────│◄── stream events ───────│
+  │  brief + mixed sources  │                         │</pre>
+
+  <div class="callout warn">
+    <strong>Session-scoped vector store</strong><br>
+    Create one vector store per <code>sessionId</code> on first upload. Attach
+    every file to that store. Pass its id into <code>file_search</code> on
+    research turns for that session. <strong>New chat</strong> clears the session
+    map entry — for this lesson, orphan stores on OpenAI are acceptable; Lesson
+    31 can discuss cleanup and production persistence.
+  </div>
+
+  <h2>1. Session record — <code>lib/sessions.ts</code></h2>
+
+  <p>
+    Expand the map from a bare <code>lastResponseId</code> string to a small
+    record:
+  </p>
+
+  <pre class="example">type SessionRecord = {
+  lastResponseId: string | null;
+  vectorStoreId: string | null;
+  files: { name: string; fileId: string }[];
+};
+
+const sessions = new Map&lt;string, SessionRecord&gt;();
+
+export function getSession(sessionId: string): SessionRecord {
+  return sessions.get(sessionId) ?? {
+    lastResponseId: null,
+    vectorStoreId: null,
+    files: [],
+  };
+}
+
+export function updateSession(sessionId: string, patch: Partial&lt;SessionRecord&gt;) {
+  const current = getSession(sessionId);
+  sessions.set(sessionId, { ...current, ...patch });
+}</pre>
+
+  <p>
+  Keep <code>getLastResponseId</code> / <code>setLastResponseId</code> as thin
+  wrappers so <code>app/api/research/route.ts</code> changes stay small.
+  </p>
+
+  <h2>2. Upload helper — <code>lib/upload-doc.ts</code></h2>
+
+  <p>
+    Port the pipeline from
+    <code>practice/lib/vector-store.mjs</code> — but per session, not global
+    <code>.env</code>:
+  </p>
+
+  <pre class="example">export async function uploadDocToSession(
+  sessionId: string,
+  file: File
+): Promise&lt;{ name: string; fileId: string }&gt; {
+  const session = getSession(sessionId);
+  let vectorStoreId = session.vectorStoreId;
+
+  if (!vectorStoreId) {
+    const store = await openai.vectorStores.create({
+      name: `research-${sessionId.slice(0, 8)}`,
+    });
+    vectorStoreId = store.id;
+    updateSession(sessionId, { vectorStoreId });
+  }
+
+  const uploaded = await openai.files.create({
+    file,
+    purpose: "assistants",
+  });
+
+  const indexed = await openai.vectorStores.files.createAndPoll(vectorStoreId, {
+    file_id: uploaded.id,
+  });
+  if (indexed.status === "failed") {
+    throw new Error(`Indexing failed for ${file.name}`);
+  }
+
+  const entry = { name: file.name, fileId: uploaded.id };
+  updateSession(sessionId, { files: [...session.files, entry] });
+  return entry;
+}</pre>
+
+  <div class="callout">
+    <strong>Indexing takes seconds.</strong><br>
+    <code>createAndPoll</code> blocks until the file is searchable. Show
+    “Indexing…” in the UI during upload — do not enable Ask until upload
+    completes.
+  </div>
+
+  <h2>3. Upload route — <code>app/api/upload/route.ts</code></h2>
+
+  <pre class="example">export async function POST(req: Request) {
+  const form = await req.formData();
+  const file = form.get("file");
+  const sessionId = form.get("sessionId");
+
+  if (!(file instanceof File) || !file.size) {
+    return Response.json({ error: "file is required" }, { status: 400 });
+  }
+  if (typeof sessionId !== "string" || !sessionId) {
+    return Response.json({ error: "sessionId is required" }, { status: 400 });
+  }
+
+  const entry = await uploadDocToSession(sessionId, file);
+  return Response.json({ file: entry });
+}</pre>
+
+  <p>
+    Accept <code>.pdf</code>, <code>.md</code>, <code>.txt</code> for practice.
+    Reject huge files in the route (e.g. 4 MB) before hitting the API.
+  </p>
+
+  <h2>4. Stream helper — mixed citations</h2>
+
+  <p>
+    Extend <code>ResearchUIState</code> with <code>searchedDocs: boolean</code>.
+    Detect <code>file_search_call</code> in the event loop. After
+    <code>finalResponse()</code>, extract both annotation types:
+  </p>
+
+  <pre class="example">export type Source =
+  | { kind: "url"; title: string; url: string }
+  | { kind: "file"; filename: string };
+
+function extractSources(response: Response): Source[] {
+  const message = response.output.filter((i) => i.type === "message").at(-1);
+  const annotations = (message?.content ?? [])
+    .filter((p) => p.type === "output_text")
+    .flatMap((p) => p.annotations ?? []);
+
+  const urls = annotations
+    .filter((n) => n.type === "url_citation")
+    .map((n) => ({ kind: "url" as const, title: n.title ?? n.url, url: n.url }));
+
+  const files = annotations
+    .filter((n) => n.type === "file_citation")
+    .map((n) => ({ kind: "file" as const, filename: n.filename }));
+
+  return dedupeSources([...urls, ...files]);
+}</pre>
+
+  <p>
+    Update <code>instructions</code> — name both data sources explicitly:
+  </p>
+
+  <pre class="example">"Use file search when the user uploaded documents or asks about 'our spec',
+'this doc', or internal material. Use web search for current public facts.
+Return a structured brief grounded in what you retrieve. Cite sources via
+annotations — do not invent filenames or URLs."</pre>
+
+  <p>
+    Pass <code>vectorStoreId</code> into <code>streamResearch</code> from the
+    route via <code>getSession(sessionId).vectorStoreId</code>.
+  </p>
+
+  <h2>5. Client — upload + mixed Sources</h2>
+
+  <p>
+    Above the textarea, add:
+  </p>
+
+  <ul>
+    <li>Hidden <code>&lt;input type="file"&gt;</code> triggered by an Upload button</li>
+    <li>List of uploaded filenames for this session (from upload response + local state)</li>
+    <li>Disabled Send while upload is in flight</li>
+  </ul>
+
+  <p>
+    In <code>BriefArticle</code>, render Sources by <code>kind</code>:
+  </p>
+
+  <pre class="example">{sources.map((s) =>
+  s.kind === "url" ? (
+    &lt;a href={s.url} …&gt;{s.title}&lt;/a&gt;
+  ) : (
+    &lt;span&gt;📄 {s.filename}&lt;/span&gt;
+  )
+)}</pre>
+
+  <p>
+    Footer badges: “Grounded with web search” / “Grounded with documents” —
+    mirror <code>searched</code> and <code>searchedDocs</code> from the final
+    snapshot (and persist on each <code>Turn</code>).
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. Omit file_search when no docs uploaded.","false":"file_search without a store will error or waste calls."}'>
+    <h3>1. When do you register file_search?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Only when session has uploaded docs</button>
+      <button data-correct="false">On every research request unconditionally</button>
+      <button data-correct="false">Never mix it with web_search tools</button>
+    </div>
+    <div class="feedback" id="quiz1-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Correct. Same rule as url_citation — annotations win.","false":"Filenames in ResearchBrief JSON are not trustworthy."}'>
+    <h3>2. Where do doc filenames in Sources come from?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">file_citation annotations on final message</button>
+      <button data-correct="false">ResearchBrief schema fields from the model</button>
+      <button data-correct="false">Original upload filename from the client</button>
+    </div>
+    <div class="feedback" id="quiz2-feedback"></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Correct. One store per thread; files accumulate.","false":"Global env id is triage practice — not session upload."}'>
+    <h3>3. Vector store scope in this lesson?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">One vector store per chat session</button>
+      <button data-correct="false">One global store shared by every user</button>
+      <button data-correct="false">New vector store created on each upload</button>
+    </div>
+    <div class="feedback" id="quiz3-feedback"></div>
+  </div>
+
+  <h2>Do this now</h2>
+
+  <div class="practice">
+    <p><strong>35-minute win:</strong> upload a doc, ask from it, ask from the web.</p>
+    <ol>
+      <li>Expand <code>lib/sessions.ts</code> — <code>SessionRecord</code> with <code>vectorStoreId</code> and <code>files</code></li>
+      <li>Add <code>lib/upload-doc.ts</code> — create store, upload, <code>createAndPoll</code></li>
+      <li>Add <code>app/api/upload/route.ts</code> — <code>FormData</code> with <code>file</code> + <code>sessionId</code></li>
+      <li>Update <code>lib/research-state.ts</code> — <code>Source</code> union, <code>searchedDocs</code></li>
+      <li>Update <code>lib/stream-research.ts</code> — conditional <code>file_search</code>, mixed annotations, updated instructions</li>
+      <li>Update <code>components/ResearchChat.tsx</code> — upload button, file list, mixed Sources rendering</li>
+      <li>Copy <code>practice/fixtures/product-roadmap.md</code> to your machine (or any short .md spec)</li>
+      <li><code>npm run dev</code> — upload the file; confirm it appears in the file list</li>
+      <li>Ask: <em>What is the status and priority of dark mode in our roadmap?</em> — brief should cite <code>product-roadmap.md</code> (no web search required)</li>
+      <li>Ask: <em>What launched in the AI space this week?</em> — web search path; URL sources</li>
+      <li>Ask: <em>How does our dark mode plan compare to what competitors shipped?</em> — both tools may run; Sources shows files + URLs</li>
+      <li><strong>New chat</strong> — uploaded list clears; doc questions should not find the old file</li>
+      <li>Skim <code>practice/0021-triage-file-search.mjs</code> — same <code>file_search</code> tool config, different product shape</li>
+    </ol>
+    <p>
+      <strong>Next lesson (31):</strong> production hardening — auth, rate limits,
+      error boundaries, and Vitest SSE contract tests on <code>POST /api/research</code>.
+    </p>
+  </div>
+
+  <p class="source">
+    Primary source:
+    <a href="https://platform.openai.com/docs/guides/tools-file-search">File search guide</a> ·
+    Revisit:
+    <a href="https://platform.openai.com/docs/api-reference/vector-stores">Vector stores API</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+    <p style="margin-top: 0.75rem;">
+      Previous: <a href="0029-research-assistant-threads.html">Lesson 29 — Research Threads</a> ·
+      Reference: <a href="../reference/file-search.html">File Search</a> ·
+      Next: Lesson 31 — Hardening ·
+      Mission: <a href="../MISSION.md">MISSION.md</a>
+    </p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>
