@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 32 — AI SDK Server Migration</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <div class="lesson-meta">Lesson 32 · ~35 minutes</div>
+  <h1>AI SDK Server Migration</h1>
+
+  <p class="epigraph">
+    Same SSE frames for the client.
+    Different engine under the route.
+  </p>
+
+  <p>
+    <a href="0031-research-assistant-hardening.html">Lesson 31</a> shipped a
+    guarded, testable Research Assistant. The streaming loop in
+    <code>lib/stream-research.ts</code> still called
+    <code>openai.responses.stream()</code> directly. This lesson swaps the server
+    to <strong>Vercel AI SDK Core</strong> — <code>streamText</code> +
+    <code>openai.responses()</code> — while keeping the exact
+    <code>ResearchUIState</code> contract your client and Vitest already expect.
+  </p>
+
+  <h2>What changes (and what doesn’t)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Unchanged</th>
+        <th>Migrated</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>POST /api/research</code> SSE snapshots</td>
+        <td><code>openai.responses.stream()</code> → <code>streamText()</code></td>
+      </tr>
+      <tr>
+        <td><code>ResearchChat.tsx</code> client</td>
+        <td><code>zodTextFormat</code> → <code>Output.object({ schema })</code></td>
+      </tr>
+      <tr>
+        <td>Guards, sessions, upload route</td>
+        <td>Event loop: raw OpenAI events → AI SDK <code>stream</code> parts</td>
+      </tr>
+      <tr>
+        <td>Vitest SSE contract tests</td>
+        <td>Mock target: <code>streamText</code> instead of <code>openai.responses.stream</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+  Related:
+  <a href="../reference/research-brief.html">research brief</a> ·
+  <a href="0028-research-assistant-structured-brief.html">Lesson 28</a> (structured brief) ·
+  <a href="0031-research-assistant-hardening.html">Lesson 31</a> (hardening).
+  </p>
+
+  <h2>Install AI SDK</h2>
+
+  <pre class="example">cd research-assistant
+npm install ai @ai-sdk/openai</pre>
+
+  <p>
+    <code>lib/openai.ts</code> stays for upload/vector-store calls.
+    Only <code>stream-research.ts</code> moves to AI SDK.
+  </p>
+
+  <h2>Event mapping</h2>
+
+  <p>
+    AI SDK normalizes provider streams into typed parts. Map them to your existing
+    phase machine:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>AI SDK <code>stream</code> part</th>
+        <th><code>ResearchUIState</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>tool-call</code> · <code>toolName === "web_search"</code></td>
+        <td><code>phase: "searching"</code>, <code>searched: true</code></td>
+      </tr>
+      <tr>
+        <td><code>tool-call</code> · <code>toolName === "file_search"</code></td>
+        <td><code>phase: "searching"</code>, <code>searchedDocs: true</code></td>
+      </tr>
+      <tr>
+        <td><code>text-delta</code></td>
+        <td><code>phase: "streaming-answer"</code>, append <code>briefPreview</code></td>
+      </tr>
+      <tr>
+        <td>After stream: <code>await result.output</code></td>
+        <td><code>brief</code> (parsed Zod object)</td>
+      </tr>
+      <tr>
+        <td>After stream: text <code>content</code> annotations</td>
+        <td><code>sources</code> (url + file citations)</td>
+      </tr>
+      <tr>
+        <td><code>finalStep.providerMetadata.openai.responseId</code></td>
+        <td>Return for <code>previous_response_id</code> threading</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Core call shape</h2>
+
+  <pre class="example">import { openai } from "@ai-sdk/openai";
+import { Output, streamText } from "ai";
+import { ResearchBrief } from "@/lib/schemas";
+
+const result = streamText({
+  model: openai.responses("gpt-5-mini"),
+  system: INSTRUCTIONS,
+  prompt: message,
+  tools: {
+    web_search: openai.tools.webSearch({ searchContextSize: "low" }),
+  },
+  output: Output.object({ schema: ResearchBrief, name: "research_brief" }),
+  providerOptions: {
+    openai: {
+      store: true,
+      previousResponseId, // optional — thread continuity
+    },
+  },
+});
+
+for await (const part of result.stream) {
+  // map tool-call + text-delta → onSnapshot(state)
+}
+
+const brief = await result.output;
+const responseId = (await result.finalStep).providerMetadata?.openai?.responseId;</pre>
+
+  <h2>Update Vitest mocks</h2>
+
+  <p>
+    Mock <code>streamText</code> from <code>ai</code>, not
+    <code>openai.responses.stream</code>. Return an object with:
+  </p>
+
+  <ul>
+    <li><code>stream</code> — async generator yielding <code>tool-call</code>, <code>text-delta</code>, <code>finish</code></li>
+    <li><code>output</code> — resolved <code>ResearchBrief</code></li>
+    <li><code>content</code> — text parts with <code>url_citation</code> annotations</li>
+    <li><code>toolCalls</code> — for <code>searched</code> footer metadata</li>
+    <li><code>finalStep.providerMetadata.openai.responseId</code></li>
+  </ul>
+
+  <p>Run <code>npm test</code> — same three assertions as Lesson 31.</p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. The client and route handler stay on your custom SSE contract; only the server streaming engine changes.","false":"The point of this lesson is preserving the SSE contract — the client does not need to change yet."}'>
+    <h3>1. Why keep the same SSE frames?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">So client and tests stay stable</button>
+      <button data-correct="false">Because useChat requires it</button>
+      <button data-correct="false">Because AI SDK cannot stream JSON</button>
+      <button data-correct="false">Because OpenAI deprecated Responses</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Right. AI SDK maps OpenAI persistence to providerOptions.openai.previousResponseId.","false":"Thread continuity still uses OpenAI server-side state — just via AI SDK provider options."}'>
+    <h3>2. Where does previous_response_id go?</h3>
+    <div class="quiz-options">
+      <button data-correct="false">In the request body from client</button>
+      <button data-correct="true">providerOptions.openai.previousResponseId</button>
+      <button data-correct="false">Output.object schema field</button>
+      <button data-correct="false">useChat messages array</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <h2>Steps</h2>
+
+  <ol>
+    <li>Install <code>ai</code> and <code>@ai-sdk/openai</code></li>
+    <li>Rewrite <code>lib/stream-research.ts</code> with <code>streamText</code></li>
+    <li>Map <code>tool-call</code> and <code>text-delta</code> to <code>onSnapshot</code></li>
+    <li>Extract citations from text <code>content</code> provider annotations</li>
+    <li>Return <code>responseId</code> from <code>finalStep.providerMetadata</code></li>
+    <li>Update <code>__tests__/research-route.test.ts</code> to mock <code>streamText</code></li>
+    <li><code>npm test</code> and <code>npm run build</code> — both green</li>
+    <li><code>npm run dev</code> — send a research question; UI should behave identically</li>
+  </ol>
+
+  <p>
+    <strong>Server migration complete.</strong> Next: optional client refactor to
+    <code>useChat</code> (Lesson 33), or cross-provider comparison per your mission.
+  </p>
+
+  <p class="source">
+    Primary source:
+    <a href="https://ai-sdk.dev/cookbook/guides/openai-responses">AI SDK — OpenAI Responses API</a> ·
+    <a href="https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text">streamText reference</a>.
+  </p>
+
+  <footer>
+    <p>Stuck on anything? Ask your agent teacher — paste the error and what you tried.</p>
+  </footer>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -3,53 +3,58 @@ import { POST } from "@/app/api/research/route";
 import { readSseStream } from "@/lib/read-sse-stream";
 import type { ResearchUIState } from "@/lib/research-state";
 
-const mockStream = vi.hoisted(() => vi.fn());
+const mockStreamText = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/openai", () => ({
-  openai: {
-    responses: { stream: mockStream },
-  },
-}));
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ai")>();
+  return {
+    ...actual,
+    streamText: mockStreamText,
+  };
+});
 
 function fakeBriefStream() {
   const events = [
-    {
-      type: "response.output_item.added",
-      item: { type: "web_search_call" },
-    },
-    { type: "response.output_text.delta", delta: '{"headline":' },
-    { type: "response.output_text.delta", delta: '"Test"}' },
+    { type: "tool-call", toolName: "web_search", toolCallId: "tc_1", input: {} },
+    { type: "text-delta", text: '{"headline":' },
+    { type: "text-delta", text: '"Test"}' },
+    { type: "finish", finishReason: "stop" },
   ];
+
   return {
-    async *[Symbol.asyncIterator]() {
-      for (const e of events) yield e;
-    },
-    finalResponse: async () => ({
-      id: "resp_test_123",
-      output: [
-        { type: "web_search_call" },
-        {
-          type: "message",
-          content: [
-            {
-              type: "output_text",
-              text: "{}",
-              annotations: [
-                {
-                  type: "url_citation",
-                  title: "Example",
-                  url: "https://example.com",
-                },
-              ],
-            },
-          ],
+    stream: (async function* () {
+      for (const event of events) yield event;
+    })(),
+    output: Promise.resolve({
+      headline: "Test",
+      summary: "Summary.",
+      key_points: ["One"],
+      confidence: "high",
+    }),
+    content: Promise.resolve([
+      {
+        type: "text",
+        text: "{}",
+        providerMetadata: {
+          openai: {
+            itemId: "msg_1",
+            annotations: [
+              {
+                type: "url_citation",
+                title: "Example",
+                url: "https://example.com",
+                start_index: 0,
+                end_index: 0,
+              },
+            ],
+          },
         },
-      ],
-      output_parsed: {
-        headline: "Test",
-        summary: "Summary.",
-        key_points: ["One"],
-        confidence: "high",
+      },
+    ]),
+    toolCalls: Promise.resolve([{ toolName: "web_search" }]),
+    finalStep: Promise.resolve({
+      providerMetadata: {
+        openai: { responseId: "resp_test_123" },
       },
     }),
   };
@@ -57,8 +62,8 @@ function fakeBriefStream() {
 
 describe("POST /api/research", () => {
   beforeEach(() => {
-    mockStream.mockReset();
-    mockStream.mockReturnValue(fakeBriefStream());
+    mockStreamText.mockReset();
+    mockStreamText.mockReturnValue(fakeBriefStream());
     delete process.env.RESEARCH_API_SECRET;
   });
 

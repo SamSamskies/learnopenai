@@ -40,6 +40,10 @@
   `app/api/*/route.ts` — replaces Node `http.createServer` from triage practice. Use for: streaming research API.
 - [openai-responses-starter-app](https://github.com/openai/openai-responses-starter-app)
   Official starter repo. Use for: reference implementation patterns; compare to `research-assistant/` as you build.
+- [Vercel AI SDK — OpenAI Responses API cookbook](https://ai-sdk.dev/cookbook/guides/openai-responses)
+  `streamText` + `openai.responses()`, built-in web/file search tools, `previousResponseId`, structured `Output.object`. Use for: Lesson 32+ server migration in `research-assistant/`.
+- [AI SDK Core — streamText reference](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text)
+  Stream parts (`tool-call`, `text-delta`, `finish`), `result.output`, `finalStep.providerMetadata`. Use for: mapping AI SDK events to custom SSE snapshots.
 
 ## Wisdom (Communities)
 

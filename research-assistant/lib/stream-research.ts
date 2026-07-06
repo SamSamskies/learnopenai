@@ -1,9 +1,11 @@
 import "server-only";
 
-import { zodTextFormat } from "openai/helpers/zod";
+import {
+  openai,
+  type OpenaiResponsesTextProviderMetadata,
+} from "@ai-sdk/openai";
+import { Output, streamText } from "ai";
 import { ResearchBrief } from "@/lib/schemas";
-import type { Response } from "openai/resources/responses/responses";
-import { openai } from "@/lib/openai";
 import {
   createResearchState,
   dedupeSources,
@@ -14,36 +16,41 @@ import {
 export type { ResearchPhase, ResearchUIState, Source } from "@/lib/research-state";
 export { createResearchState } from "@/lib/research-state";
 
+const INSTRUCTIONS =
+  "You are a research assistant for solo builders. Use file search when the user uploaded documents or asks about 'our spec', 'this doc', or internal material. Use web search for current public facts. Return a structured brief grounded in what you retrieve. Cite sources via annotations — do not invent filenames or URLs.";
+
 export function publicError(err: unknown): string {
   console.error("[streamResearch]", err);
   return "Research request failed. Try again in a moment.";
 }
 
-function extractSources(response: Response): Source[] {
-  const message = response.output
-    .filter((item) => item.type === "message")
-    .at(-1);
+function extractSources(content: Array<{ type: string; providerMetadata?: unknown }>): Source[] {
+  const sources: Source[] = [];
 
-  const annotations = (message?.content ?? [])
-    .filter((part) => part.type === "output_text")
-    .flatMap((part) => part.annotations ?? []);
+  for (const part of content) {
+    if (part.type !== "text") continue;
+    const metadata = part.providerMetadata as
+      | OpenaiResponsesTextProviderMetadata
+      | undefined;
 
-  const urls = annotations
-    .filter((note) => note.type === "url_citation")
-    .map((note) => ({
-      kind: "url" as const,
-      title: note.title ?? note.url,
-      url: note.url,
-    }));
+    for (const annotation of metadata?.openai?.annotations ?? []) {
+      if (annotation.type === "url_citation") {
+        sources.push({
+          kind: "url",
+          title: annotation.title ?? annotation.url,
+          url: annotation.url,
+        });
+      }
+      if (annotation.type === "file_citation") {
+        sources.push({
+          kind: "file",
+          filename: annotation.filename,
+        });
+      }
+    }
+  }
 
-  const files = annotations
-    .filter((note) => note.type === "file_citation")
-    .map((note) => ({
-      kind: "file" as const,
-      filename: note.filename,
-    }));
-
-  return dedupeSources([...urls, ...files]);
+  return sources;
 }
 
 export async function streamResearch(
@@ -57,71 +64,68 @@ export async function streamResearch(
   const state = createResearchState({ phase: "searching" });
   onSnapshot(state);
 
-  const stream = openai.responses.stream({
-    model: "gpt-5-mini",
-    instructions:
-      "You are a research assistant for solo builders. Use file search when the user uploaded documents or asks about 'our spec', 'this doc', or internal material. Use web search for current public facts. Return a structured brief grounded in what you retrieve. Cite sources via annotations — do not invent filenames or URLs.",
-    input: message,
-    tools: [
-      { type: "web_search", search_context_size: "low" },
-      ...(vectorStoreId
-        ? [
-            {
-              type: "file_search" as const,
-              vector_store_ids: [vectorStoreId],
-              max_num_results: 3,
-            },
-          ]
-        : []),
-    ],
-    text: { format: zodTextFormat(ResearchBrief, "research_brief") },
-    store: true,
-    ...(previousResponseId && { previous_response_id: previousResponseId }),
+  const tools = {
+    web_search: openai.tools.webSearch({ searchContextSize: "low" }),
+    ...(vectorStoreId
+      ? {
+          file_search: openai.tools.fileSearch({
+            vectorStoreIds: [vectorStoreId],
+            maxNumResults: 3,
+          }),
+        }
+      : {}),
+  };
+
+  const result = streamText({
+    model: openai.responses("gpt-5-mini"),
+    system: INSTRUCTIONS,
+    prompt: message,
+    tools,
+    output: Output.object({ schema: ResearchBrief, name: "research_brief" }),
+    providerOptions: {
+      openai: {
+        store: true,
+        ...(previousResponseId && { previousResponseId }),
+      },
+    },
   });
 
-  for await (const event of stream) {
-    if (
-      event.type === "response.output_item.added" &&
-      event.item.type === "web_search_call"
-    ) {
-      state.searched = true;
-      state.phase = "searching";
-      onSnapshot({ ...state });
+  for await (const part of result.stream) {
+    if (part.type === "tool-call") {
+      if (part.toolName === "web_search") {
+        state.searched = true;
+        state.phase = "searching";
+        onSnapshot({ ...state });
+      }
+      if (part.toolName === "file_search") {
+        state.searchedDocs = true;
+        state.phase = "searching";
+        onSnapshot({ ...state });
+      }
     }
 
-    if (
-      event.type === "response.output_item.added" &&
-      event.item.type === "file_search_call"
-    ) {
-      state.searchedDocs = true;
-      state.phase = "searching";
-      onSnapshot({ ...state });
-    }
-
-    if (
-      event.type === "response.output_item.added" &&
-      event.item.type === "message"
-    ) {
-      state.briefPreview = "";
-    }
-
-    if (event.type === "response.output_text.delta") {
+    if (part.type === "text-delta") {
       state.phase = "streaming-answer";
-      state.briefPreview += event.delta;
+      state.briefPreview += part.text;
       onSnapshot({ ...state });
     }
   }
 
-  const response = await stream.finalResponse();
-  state.brief = response.output_parsed ?? null;
-  state.sources = extractSources(response);
-  state.searched = response.output.some(
-    (item) => item.type === "web_search_call"
-  );
-  state.searchedDocs = response.output.some(
-    (item) => item.type === "file_search_call"
-  );
+  const content = await result.content;
+
+  state.brief = (await result.output) ?? null;
+  state.sources = dedupeSources(extractSources(content));
+  const toolCalls = await result.toolCalls;
+  state.searched =
+    state.searched ||
+    toolCalls.some((call) => call?.toolName === "web_search");
+  state.searchedDocs =
+    state.searchedDocs ||
+    toolCalls.some((call) => call?.toolName === "file_search");
   state.phase = "done";
   onSnapshot({ ...state });
-  return response.id;
+
+  const responseId = (await result.finalStep).providerMetadata?.openai
+    ?.responseId;
+  return typeof responseId === "string" ? responseId : undefined;
 }
