@@ -30,7 +30,8 @@ function extractUrlCitations(response: Response): Citation[] {
 
 export async function streamResearch(
   message: string,
-  onSnapshot: (state: ResearchUIState) => void
+  onSnapshot: (state: ResearchUIState) => void,
+  { previousResponseId }: { previousResponseId?: string } = {}
 ) {
   const state = createResearchState({ phase: "searching" });
   onSnapshot(state);
@@ -42,6 +43,8 @@ export async function streamResearch(
     input: message,
     tools: [{ type: "web_search", search_context_size: "low" }],
     text: { format: zodTextFormat(ResearchBrief, "research_brief") },
+    store: true,
+    ...(previousResponseId && { previous_response_id: previousResponseId }),
   });
 
   for await (const event of stream) {
@@ -76,4 +79,5 @@ export async function streamResearch(
   );
   state.phase = "done";
   onSnapshot({ ...state });
+  return response.id;
 }
