@@ -2,9 +2,10 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BriefArticle } from "./BriefArticle";
 import {
+  ChevronDownIcon,
   PaperclipIcon,
   PlusIcon,
   RetryIcon,
@@ -23,7 +24,15 @@ import {
 import { formatTransportError } from "@/lib/format-transport-error";
 
 const SESSION_KEY = "researchSessionId";
+const NEAR_BOTTOM_THRESHOLD = 120;
 const appToken = process.env.NEXT_PUBLIC_RESEARCH_API_SECRET;
+
+function isNearBottom(container: HTMLElement) {
+  return (
+    container.scrollHeight - container.scrollTop - container.clientHeight <
+    NEAR_BOTTOM_THRESHOLD
+  );
+}
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -323,9 +332,62 @@ export function ResearchChat() {
     }
   }
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const lastTurnRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const pendingScrollToTurnRef = useRef(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
+  const lastTurnId = turns.at(-1)?.user.id;
+
+  function scrollToBottom(smooth = true) {
+    isNearBottomRef.current = true;
+    setShowScrollButton(false);
+    bottomRef.current?.scrollIntoView({
+      behavior: smooth ? "smooth" : "auto",
+      block: "end",
+    });
+  }
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const onScroll = () => {
+      const nearBottom = isNearBottom(container);
+      isNearBottomRef.current = nearBottom;
+      setShowScrollButton(!nearBottom && turns.length > 0);
+    };
+
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [turns.length]);
+
+  useEffect(() => {
+    if (!pendingScrollToTurnRef.current || !lastTurnId) return;
+    pendingScrollToTurnRef.current = false;
+    requestAnimationFrame(() => {
+      lastTurnRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [lastTurnId]);
+
+  useEffect(() => {
+    if (!busy || !isNearBottomRef.current) return;
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    });
+  }, [messages, busy]);
+
   function send(text: string) {
     const message = text.trim();
     if (!message || busy || uploading) return;
+    pendingScrollToTurnRef.current = true;
+    isNearBottomRef.current = true;
+    setShowScrollButton(false);
     sendMessage({ text: message });
     setInput("");
     if (textareaRef.current) {
@@ -377,7 +439,8 @@ export function ResearchChat() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="relative flex-1 overflow-hidden">
+        <div ref={scrollContainerRef} className="h-full overflow-y-auto">
         <div className="mx-auto max-w-[720px] px-6 py-8">
           {isEmpty && <EmptyState />}
 
@@ -405,7 +468,11 @@ export function ResearchChat() {
                 const waitPhase = deriveInFlightPhase(status, research);
 
                 return (
-                  <div key={turn.user.id} className="flex flex-col gap-6">
+                  <div
+                    key={turn.user.id}
+                    ref={isLast ? lastTurnRef : undefined}
+                    className="flex flex-col gap-6"
+                  >
                     <UserMessage text={question} />
 
                     {waitPhase === "submitted" && <SubmittedAck />}
@@ -429,7 +496,11 @@ export function ResearchChat() {
               }
 
               return (
-                <div key={turn.user.id} className="flex flex-col gap-6">
+                <div
+                  key={turn.user.id}
+                  ref={isLast ? lastTurnRef : undefined}
+                  className="flex flex-col gap-6"
+                >
                   <UserMessage text={question} />
                   {research?.phase === "done" && research.brief && (
                     <>
@@ -475,7 +546,21 @@ export function ResearchChat() {
               />
             </div>
           )}
+
+          <div ref={bottomRef} aria-hidden="true" className="h-16" />
         </div>
+        </div>
+
+        {showScrollButton && (
+          <button
+            type="button"
+            onClick={() => scrollToBottom()}
+            aria-label="Scroll to latest"
+            className="absolute bottom-4 right-4 z-10 rounded-full border border-outline-variant bg-background p-2 shadow-md transition-colors hover:bg-surface-container-low"
+          >
+            <ChevronDownIcon />
+          </button>
+        )}
       </div>
 
       <div className="shrink-0 border-t border-outline-variant/60 bg-background">
