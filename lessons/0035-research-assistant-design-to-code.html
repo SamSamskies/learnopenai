@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="../assets/lesson.css">
 </head>
 <body>
-  <div class="lesson-meta">Lesson 35 · ~50 minutes · coming next</div>
+  <div class="lesson-meta">Lesson 35 · ~50 minutes</div>
   <h1>Design to Code</h1>
 
   <p class="epigraph">
@@ -16,37 +16,270 @@
   </p>
 
   <p>
-    Prerequisite:
-    <a href="0034-research-assistant-stitch-redesign.html">Lesson 34</a> —
-    you exported <code>research-assistant/DESIGN.md</code> from Stitch.
-    This lesson applies that design system to
-    <code>ResearchChat.tsx</code> without changing any product logic.
+    <a href="0034-research-assistant-stitch-redesign.html">Lesson 34</a> exported
+    <code>research-assistant/DESIGN.md</code> from Stitch — colors, typography,
+    spacing, and component rules for the "Scholarly Precision" identity. This
+    lesson applies that design system to <code>ResearchChat.tsx</code> without
+    changing any product logic.
   </p>
 
   <p>
-    <em>This lesson will be authored after you complete Lesson 34 and have a
-    real <code>DESIGN.md</code> to work from.</em> Ask your agent teacher to
-    flesh it out once your Stitch export is in the repo.
+    Related:
+    <a href="../reference/design-to-code.html">Design to code reference</a> ·
+    <a href="../reference/google-stitch.html">Google Stitch</a> ·
+    <a href="../reference/research-assistant.html">Research Assistant</a> ·
+    <a href="0034-research-assistant-stitch-redesign.html">Lesson 34</a>.
   </p>
 
-  <h2>Preview — what Lesson 35 will cover</h2>
+  <h2>What changes (and what doesn't)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Unchanged</th>
+        <th>Restyled</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>useChat</code>, transport, session handling</td>
+        <td><code>globals.css</code> — CSS variables + Tailwind theme</td>
+      </tr>
+      <tr>
+        <td><code>ResearchUIState</code> phase machine</td>
+        <td><code>layout.tsx</code> — Source Serif 4 + Geist fonts</td>
+      </tr>
+      <tr>
+        <td>Upload, guards, API routes, Vitest</td>
+        <td>Header, empty state, user bubble, brief card</td>
+      </tr>
+      <tr>
+        <td><code>getResearchPart</code>, turn rendering logic</td>
+        <td>Composer, searching skeleton, error banner, source pills</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Architecture after restyle</h2>
+
+  <pre class="example">DESIGN.md (Stitch export)
+    │
+    ├─► :root CSS variables     (--primary, --outline-variant, …)
+    ├─► @theme inline           (Tailwind color/font/radius tokens)
+    ├─► layout.tsx              (next/font: Geist + Source Serif 4)
+    └─► ResearchChat.tsx        (semantic classes, subcomponents)</pre>
+
+  <h2>Step 1 — Map tokens to CSS variables</h2>
+
+  <p>
+    Open <code>research-assistant/DESIGN.md</code> and extract the colors you
+    will use in components. Add them to <code>app/globals.css</code>:
+  </p>
+
+  <pre class="example">:root {
+  --background: #ffffff;
+  --foreground: #191c1d;
+  --primary: #0f4c5c;
+  --primary-dark: #003441;
+  --outline-variant: #c0c8cb;
+  --surface-container-low: #f3f4f5;
+  /* … error tokens, on-primary, etc. */
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-outline-variant: var(--outline-variant);
+  --font-serif: var(--font-source-serif);
+  /* … wire every var you need as a Tailwind token */
+}</pre>
+
+  <p>
+    Rule: components use semantic Tailwind classes (<code>bg-primary</code>,
+    <code>border-outline-variant</code>) — never raw hex in JSX.
+  </p>
+
+  <h2>Step 2 — Load fonts in layout</h2>
+
+  <p>
+    DESIGN.md specifies Source Serif 4 for headlines and Geist for UI. In
+    <code>app/layout.tsx</code>:
+  </p>
+
+  <pre class="example">import { Geist, Geist_Mono } from "next/font/google";
+import { Source_Serif_4 } from "next/font/google";
+
+const sourceSerif = Source_Serif_4({
+  variable: "--font-source-serif",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+});</pre>
+
+  <p>
+    Apply font variables on <code>&lt;html&gt;</code>. Add a utility in
+    <code>globals.css</code>:
+  </p>
+
+  <pre class="example">.font-serif {
+  font-family: var(--font-source-serif), Georgia, serif;
+}</pre>
+
+  <h2>Step 3 — Restyle by region</h2>
+
+  <p>
+    Work through <code>ResearchChat.tsx</code> top to bottom. Extract
+    subcomponents as you go — the file gets clearer and each region maps to
+    DESIGN.md's component section.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th>
+        <th>Design intent</th>
+        <th>Key classes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Header</td>
+        <td>Quiet chrome, primary CTA</td>
+        <td><code>max-w-[1120px] border-b</code>, New Chat → <code>bg-primary</code></td>
+      </tr>
+      <tr>
+        <td>Empty state</td>
+        <td>Editorial invite</td>
+        <td><code>font-serif text-[28px]</code>, muted subtitle</td>
+      </tr>
+      <tr>
+        <td>User bubble</td>
+        <td>Subtle, not chatbot-neon</td>
+        <td><code>bg-surface-container-low rounded-lg</code>, right-aligned</td>
+      </tr>
+      <tr>
+        <td>Brief card</td>
+        <td>Published research brief</td>
+        <td>Bordered card <code>p-6</code>, serif headline, uppercase section labels</td>
+      </tr>
+      <tr>
+        <td>Sources</td>
+        <td>Citation badges</td>
+        <td><code>font-mono text-xs</code> pills with outline border</td>
+      </tr>
+      <tr>
+        <td>Searching</td>
+        <td>Designed waiting state</td>
+        <td>Spinner + skeleton card with pulse placeholders</td>
+      </tr>
+      <tr>
+        <td>Composer</td>
+        <td>Focal input bar</td>
+        <td><code>rounded-xl border focus-within:border-outline</code>, circular send</td>
+      </tr>
+      <tr>
+        <td>Error</td>
+        <td>Professional, not alarming</td>
+        <td><code>bg-error-container text-on-error-container</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Step 4 — Prompt Cursor (or restyle by hand)</h2>
+
+  <p>
+    If using an agent, point it at both files and constrain the scope:
+  </p>
+
+  <pre class="example">Restyle ResearchChat.tsx against research-assistant/DESIGN.md.
+Do NOT change useChat, API calls, phase logic, or tests.
+Map DESIGN.md colors to globals.css CSS variables.
+Use font-serif for brief headlines and empty state.
+Use borders instead of shadows. Verify all ResearchUIState phases render.</pre>
+
+  <h2>Step 5 — Verify all phases</h2>
+
+  <p>
+    Run <code>npm run dev</code> and walk through every UI state:
+  </p>
+
   <ol>
-    <li>Point Cursor at <code>DESIGN.md</code> + <code>ResearchChat.tsx</code></li>
-    <li>Restyle regions: header, user bubble, brief card, composer, states</li>
-    <li>Map Stitch tokens → Tailwind classes (or CSS variables)</li>
-    <li>Verify all <code>ResearchUIState</code> phases still render correctly</li>
-    <li><code>npm test</code> + manual QA — behavior unchanged, visuals upgraded</li>
-    <li>Optional: Stitch MCP for round-trip design tweaks</li>
+    <li><strong>Empty</strong> — serif headline, no thread yet</li>
+    <li><strong>Searching</strong> — spinner + skeleton card</li>
+    <li><strong>Streaming</strong> — collapsible brief preview panel</li>
+    <li><strong>Done</strong> — brief card with headline, points, source pills, grounding badges</li>
+    <li><strong>Error</strong> — error banner + retry button</li>
+    <li><strong>Upload</strong> — file chips above composer</li>
+    <li><strong>Multi-turn</strong> — older turns still render correctly</li>
   </ol>
 
   <p>
-    Reference:
-    <a href="../reference/google-stitch.html">Google Stitch</a> ·
-    <a href="../reference/research-assistant.html">Research Assistant</a>.
+    Then run <code>npm test</code> and <code>npm run build</code>. Tests should
+    pass unchanged — you only touched presentation.
+  </p>
+
+  <h2>Check your understanding</h2>
+
+  <div class="quiz" id="quiz1" data-messages='{"true":"Correct. CSS variables in globals.css bridge DESIGN.md tokens to Tailwind utility classes.","false":"The bridge is CSS variables + @theme inline — not copying hex into every component."}'>
+    <h3>1. Where do DESIGN.md colors become Tailwind classes?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">globals.css variables and theme</button>
+      <button data-correct="false">Hard-coded hex in each component</button>
+      <button data-correct="false">Stitch exports Tailwind config directly</button>
+      <button data-correct="false">next.config.ts color palette field</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <div class="quiz" id="quiz2" data-messages='{"true":"Right. Phase logic, useChat, and API contracts stay frozen — only classes and structure change.","false":"Design-to-code is visual only; streaming, phases, and tests must not change."}'>
+    <h3>2. What must NOT change in this lesson?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Product logic and API behavior</button>
+      <button data-correct="false">Tailwind class names on every div</button>
+      <button data-correct="false">Font family choices in layout.tsx</button>
+      <button data-correct="false">Border radius on the composer bar</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <div class="quiz" id="quiz3" data-messages='{"true":"Exactly. Serif signals editorial content; sans keeps UI controls precise and modern.","false":"Source Serif is for content (brief headlines); Geist is for UI chrome and inputs."}'>
+    <h3>3. Why two font families?</h3>
+    <div class="quiz-options">
+      <button data-correct="true">Serif for content sans for UI</button>
+      <button data-correct="false">Stitch requires two Google Fonts always</button>
+      <button data-correct="false">React needs one font per component type</button>
+      <button data-correct="false">Tailwind only supports two font variables</button>
+    </div>
+    <div class="quiz-feedback" hidden></div>
+  </div>
+
+  <h2>Steps checklist</h2>
+
+  <ol>
+    <li>Read <code>DESIGN.md</code>; list tokens you will use</li>
+    <li>Add CSS variables + <code>@theme inline</code> in <code>globals.css</code></li>
+    <li>Load Source Serif 4 and Geist in <code>layout.tsx</code></li>
+    <li>Restyle header, empty state, user bubble, brief card, composer</li>
+    <li>Add searching skeleton and styled error banner</li>
+    <li>Manual QA — all <code>ResearchUIState</code> phases + upload + multi-turn</li>
+    <li><code>npm test</code> + <code>npm run build</code> — no behavior regressions</li>
+  </ol>
+
+  <p>
+    <strong>Design-to-code complete.</strong> The Research Assistant now has a
+    shipped visual identity tied to an agent-readable spec. Future tweaks start
+    in <code>DESIGN.md</code> or Stitch, flow through CSS variables, and land in
+    components — not ad-hoc class hunting.
+  </p>
+
+  <p class="source">
+    Primary source:
+    <a href="https://developers.googleblog.com/stitch-a-new-way-to-design-uis/">Google Developers Blog — Stitch overview</a> ·
+    <a href="https://tailwindcss.com/docs/theme">Tailwind CSS v4 — Theme variables</a>.
   </p>
 
   <footer>
-    <p>Complete Lesson 34 first, then ask your agent teacher to run Lesson 35 with your exported design.</p>
+    <p>Stuck on anything? Ask your agent teacher — paste your DESIGN.md, a screenshot, or a specific region that doesn't match.</p>
   </footer>
+
+  <script src="../assets/quiz.js"></script>
 </body>
 </html>

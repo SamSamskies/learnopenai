@@ -10,7 +10,7 @@ Become a proficient AI Product Engineer who can design, build, and ship products
 
 ## Parallel track: AI-native design (Lessons 34+)
 
-Become fluent in **design-to-code workflows** with AI-native tools — starting with Google Stitch. Skills transfer across tools: prompt a product intent, iterate on an infinite canvas, export `DESIGN.md`, implement in Cursor. Lesson 34 redesigns the full Research Assistant surface in Stitch; Lesson 35 applies the export to `ResearchChat.tsx`.
+Become fluent in **design-to-code workflows** with AI-native tools — starting with Google Stitch. Skills transfer across tools: prompt a product intent, iterate on an infinite canvas, export `DESIGN.md`, implement in Cursor. Lessons 34–35 complete: Stitch redesign → `DESIGN.md` export → shipped UI in `ResearchChat.tsx`.
 
 ## Success looks like
 

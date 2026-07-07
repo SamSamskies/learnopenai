@@ -302,23 +302,17 @@ function BriefPreviewPanel({
 }
 
 function SourcePill({ source }: { source: Source }) {
+  const pillClass =
+    "inline-flex items-center rounded-lg border border-outline-variant bg-background px-3 py-1.5 font-mono text-xs text-foreground transition-colors hover:bg-surface-container-low";
+
   if (source.kind === "url") {
     return (
-      <a
-        href={source.url}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center rounded-lg border border-outline-variant bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-surface-container-low"
-      >
+      <a href={source.url} target="_blank" rel="noreferrer" className={pillClass}>
         {source.title}
       </a>
     );
   }
-  return (
-    <span className="inline-flex items-center rounded-lg border border-outline-variant bg-background px-3 py-1.5 text-sm text-foreground">
-      {source.filename}
-    </span>
-  );
+  return <span className={pillClass}>{source.filename}</span>;
 }
 
 function BriefArticle({
@@ -341,7 +335,7 @@ function BriefArticle({
   }
 
   return (
-    <article>
+    <article className="rounded-lg border border-outline-variant p-6">
       <span className="inline-block rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
         Research Brief
       </span>

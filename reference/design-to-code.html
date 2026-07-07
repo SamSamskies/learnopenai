@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Design to Code — Quick Reference</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    body { max-width: 720px; }
+    h1 {
+      font-weight: 400;
+      font-size: 1.75rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #f4f4f4;
+      font-weight: 600;
+    }
+    footer { margin-top: 2.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Design to Code</h1>
+  <p class="subtitle">Stitch DESIGN.md → CSS variables → Tailwind → React components.</p>
+
+  <h2>Pipeline</h2>
+  <pre class="example">Stitch canvas
+    ↓ export
+research-assistant/DESIGN.md   (colors, type, spacing, component rules)
+    ↓ map tokens
+app/globals.css                (:root vars + @theme inline)
+app/layout.tsx                 (font loading)
+    ↓ apply classes
+components/ResearchChat.tsx    (visual only — no logic changes)</pre>
+
+  <h2>Token mapping (Research Assistant)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>DESIGN.md</th>
+        <th>CSS variable</th>
+        <th>Tailwind class</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>primary</code> #0F4C5C</td>
+        <td><code>--primary</code></td>
+        <td><code>bg-primary</code>, <code>text-primary</code></td>
+      </tr>
+      <tr>
+        <td><code>primary</code> dark #003441</td>
+        <td><code>--primary-dark</code></td>
+        <td><code>hover:bg-primary-dark</code></td>
+      </tr>
+      <tr>
+        <td><code>on-surface-variant</code></td>
+        <td><code>--on-surface-variant</code></td>
+        <td><code>text-on-surface-variant</code></td>
+      </tr>
+      <tr>
+        <td><code>outline-variant</code></td>
+        <td><code>--outline-variant</code></td>
+        <td><code>border-outline-variant</code></td>
+      </tr>
+      <tr>
+        <td><code>surface-container-low</code></td>
+        <td><code>--surface-container-low</code></td>
+        <td><code>bg-surface-container-low</code></td>
+      </tr>
+      <tr>
+        <td><code>headline-lg</code> Source Serif 4</td>
+        <td><code>--font-source-serif</code></td>
+        <td><code>font-serif</code></td>
+      </tr>
+      <tr>
+        <td><code>body-md</code> Geist</td>
+        <td><code>--font-geist-sans</code></td>
+        <td>default on <code>body</code></td>
+      </tr>
+      <tr>
+        <td><code>spacing.md</code> 24px</td>
+        <td>—</td>
+        <td><code>p-6</code> (card padding)</td>
+      </tr>
+      <tr>
+        <td><code>rounded.DEFAULT</code> 0.5rem</td>
+        <td><code>--radius-DEFAULT</code></td>
+        <td><code>rounded-lg</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Component rules</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th>
+        <th>Key classes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Header</td>
+        <td><code>max-w-[1120px]</code>, <code>border-b border-outline-variant/60</code></td>
+      </tr>
+      <tr>
+        <td>Reading column</td>
+        <td><code>max-w-[720px]</code> — ~60–80 char line length</td>
+      </tr>
+      <tr>
+        <td>User bubble</td>
+        <td><code>bg-surface-container-low rounded-lg</code>, right-aligned</td>
+      </tr>
+      <tr>
+        <td>Brief card</td>
+        <td><code>rounded-lg border border-outline-variant p-6</code>, <code>font-serif</code> headline</td>
+      </tr>
+      <tr>
+        <td>Source pill</td>
+        <td><code>font-mono text-xs</code>, bordered badge — not shadow</td>
+      </tr>
+      <tr>
+        <td>Composer</td>
+        <td><code>rounded-xl border</code>, <code>focus-within:border-outline</code></td>
+      </tr>
+      <tr>
+        <td>Section labels</td>
+        <td><code>text-xs font-semibold uppercase tracking-wide</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Rules of thumb</h2>
+  <ul>
+    <li><strong>Behavior frozen.</strong> Restyle only — no changes to <code>useChat</code>, phases, or API routes.</li>
+    <li><strong>Variables first.</strong> Add tokens to <code>:root</code> and <code>@theme inline</code>; avoid hard-coded hex in components.</li>
+    <li><strong>Borders over shadows.</strong> Depth via tonal surfaces and 1px outlines.</li>
+    <li><strong>Serif for content, sans for chrome.</strong> Brief headlines and empty state use <code>font-serif</code>; UI controls use Geist.</li>
+    <li><strong>QA all phases.</strong> Empty → searching → streaming → done → error, plus upload chips and copy-brief.</li>
+  </ul>
+
+  <p>
+    See also:
+    <a href="google-stitch.html">Google Stitch</a> ·
+    <a href="research-assistant.html">Research Assistant</a> ·
+    <a href="../lessons/0034-research-assistant-stitch-redesign.html">Lesson 34</a> ·
+    <a href="../lessons/0035-research-assistant-design-to-code.html">Lesson 35</a>.
+  </p>
+
+  <footer>
+    <p>Source of truth for tokens: <code>research-assistant/DESIGN.md</code>.</p>
+  </footer>
+</body>
+</html>
