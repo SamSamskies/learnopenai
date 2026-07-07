@@ -13,6 +13,7 @@ import {
   StopIcon,
   WarningIcon,
 } from "./icons";
+import { deriveInFlightPhase } from "@/lib/derive-in-flight-phase";
 import { type ResearchUIState } from "@/lib/research-state";
 import {
   getResearchPart,
@@ -63,6 +64,24 @@ function UserMessage({ text }: { text: string }) {
       <div className="max-w-[85%] rounded-lg bg-surface-container-low px-4 py-3 text-base leading-relaxed text-foreground">
         {text}
       </div>
+    </div>
+  );
+}
+
+function SubmittedAck() {
+  return (
+    <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+      <Spinner />
+      <span>Got it — starting research…</span>
+    </div>
+  );
+}
+
+function ThinkingGap() {
+  return (
+    <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+      <Spinner />
+      <span>Thinking…</span>
     </div>
   );
 }
@@ -188,56 +207,6 @@ function StoppedNotice({
           <RetryIcon />
           Regenerate
         </button>
-      )}
-    </div>
-  );
-}
-
-function LiveTurn({
-  question,
-  state,
-  onRetry,
-}: {
-  question: string;
-  state: ResearchUIState;
-  onRetry: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-6">
-      <UserMessage text={question} />
-
-      {state.phase === "searching" && (
-        <SearchingStatus
-          searched={state.searched}
-          searchedDocs={state.searchedDocs}
-        />
-      )}
-
-      {state.phase === "streaming-answer" && state.briefPreview && (
-        <BriefPreviewPanel preview={state.briefPreview} defaultOpen />
-      )}
-
-      {state.phase === "done" && state.brief && (
-        <BriefArticle
-          brief={state.brief}
-          sources={state.sources}
-          searched={state.searched}
-          searchedDocs={state.searchedDocs}
-        />
-      )}
-
-      {state.phase === "done" && state.briefPreview && (
-        <BriefPreviewPanel preview={state.briefPreview} />
-      )}
-
-      {state.phase === "error" && (
-        <ErrorBanner
-          message={
-            state.error ??
-            "Something went wrong while searching. Please try again."
-          }
-          onRetry={onRetry}
-        />
       )}
     </div>
   );
@@ -376,10 +345,6 @@ export function ResearchChat() {
     }
   }
 
-  function retryQuestion(question: string) {
-    send(question);
-  }
-
   function retryTransportError() {
     const last = turns.at(-1);
     if (!last) return;
@@ -431,22 +396,34 @@ export function ResearchChat() {
                 research.phase !== "done" &&
                 research.phase !== "error";
 
-              if (inFlight && research && assistant) {
-                return (
-                  <LiveTurn
-                    key={assistant.id}
-                    question={question}
-                    state={research}
-                    onRetry={() => retryQuestion(question)}
-                  />
-                );
-              }
+              const showWaitUI =
+                inFlight &&
+                research?.phase !== "done" &&
+                research?.phase !== "error";
 
-              if (inFlight && !assistant) {
+              if (showWaitUI) {
+                const waitPhase = deriveInFlightPhase(status, research);
+
                 return (
                   <div key={turn.user.id} className="flex flex-col gap-6">
                     <UserMessage text={question} />
-                    <SearchingStatus />
+
+                    {waitPhase === "submitted" && <SubmittedAck />}
+                    {waitPhase === "thinking" && <ThinkingGap />}
+                    {waitPhase === "working" && research && (
+                      <SearchingStatus
+                        searched={research.searched}
+                        searchedDocs={research.searchedDocs}
+                      />
+                    )}
+                    {waitPhase === "working" &&
+                      research?.phase === "streaming-answer" &&
+                      research.briefPreview && (
+                        <BriefPreviewPanel
+                          preview={research.briefPreview}
+                          defaultOpen
+                        />
+                      )}
                   </div>
                 );
               }
