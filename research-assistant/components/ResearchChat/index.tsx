@@ -459,7 +459,7 @@ export function ResearchChat() {
                         research.error ??
                         "Something went wrong while searching. Please try again."
                       }
-                      onRetry={() => retryQuestion(question)}
+                      onRetry={() => regenerate({ messageId: assistant!.id })}
                     />
                   )}
                   {interrupted && (
