@@ -19,6 +19,7 @@ import {
   getUserText,
   type ResearchUIMessage,
 } from "@/lib/research-ui-message";
+import { formatTransportError } from "@/lib/format-transport-error";
 
 const SESSION_KEY = "researchSessionId";
 const appToken = process.env.NEXT_PUBLIC_RESEARCH_API_SECRET;
@@ -379,6 +380,19 @@ export function ResearchChat() {
     send(question);
   }
 
+  function retryTransportError() {
+    const last = turns.at(-1);
+    if (!last) return;
+  
+    if (last.assistant) {
+      regenerate({ messageId: last.assistant.id });
+      return;
+    }
+  
+    // Failed before an assistant message existed — safe to re-send once
+    send(getUserText(last.user));
+  }
+
   return (
     <div className="flex h-dvh flex-col bg-background">
       <header className="shrink-0 border-b border-outline-variant/60">
@@ -479,11 +493,8 @@ export function ResearchChat() {
           {error && (
             <div className="mt-6">
               <ErrorBanner
-                message={error.message}
-                onRetry={() => {
-                  const last = turns[turns.length - 1];
-                  if (last) retryQuestion(getUserText(last.user));
-                }}
+                message={formatTransportError(error)}
+                onRetry={retryTransportError}
               />
             </div>
           )}
