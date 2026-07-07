@@ -3,20 +3,22 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import type { Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { BriefArticle } from "@/components/research-chat/BriefArticle";
 import {
-  dedupeSources,
-  type ResearchUIState,
-  type Source,
-} from "@/lib/research-state";
+  PaperclipIcon,
+  PlusIcon,
+  RetryIcon,
+  SendIcon,
+  Spinner,
+  StopIcon,
+  WarningIcon,
+} from "@/components/research-chat/icons";
+import { type ResearchUIState } from "@/lib/research-state";
 import {
   getResearchPart,
   getUserText,
   type ResearchUIMessage,
 } from "@/lib/research-ui-message";
-import type { ResearchBrief } from "@/lib/schemas";
 
 const SESSION_KEY = "researchSessionId";
 const appToken = process.env.NEXT_PUBLIC_RESEARCH_API_SECRET;
@@ -35,197 +37,9 @@ function formatBriefPreview(preview: string): string {
   }
 }
 
-function formatBriefForCopy(brief: ResearchBrief, sources: Source[]): string {
-  const lines = [
-    brief.headline,
-    "",
-    brief.summary,
-    "",
-    ...brief.key_points.map((p) => `• ${p}`),
-  ];
-  if (sources.length > 0) {
-    lines.push("", "Sources:");
-    for (const s of dedupeSources(sources)) {
-      lines.push(
-        s.kind === "url" ? `- ${s.title}: ${s.url}` : `- ${s.filename}`
-      );
-    }
-  }
-  return lines.join("\n");
-}
-
-function sourceKey(source: Source): string {
-  return source.kind === "url" ? source.url : `file:${source.filename}`;
-}
-
 function resizeTextarea(el: HTMLTextAreaElement) {
   el.style.height = "auto";
   el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-}
-
-const briefMarkdownComponents: Components = {
-  p: ({ children }) => (
-    <p className="mt-3 first:mt-0 text-base leading-relaxed text-foreground">
-      {children}
-    </p>
-  ),
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="text-primary underline underline-offset-2 hover:text-primary-dark"
-    >
-      {children}
-    </a>
-  ),
-  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  ul: ({ children }) => (
-    <ul className="mt-3 list-disc space-y-1 pl-5 text-base leading-relaxed">
-      {children}
-    </ul>
-  ),
-  ol: ({ children }) => (
-    <ol className="mt-3 list-decimal space-y-1 pl-5 text-base leading-relaxed">
-      {children}
-    </ol>
-  ),
-  li: ({ children }) => <li className="text-foreground">{children}</li>,
-};
-
-const inlineMarkdownComponents: Components = {
-  ...briefMarkdownComponents,
-  p: ({ children }) => <>{children}</>,
-};
-
-function Spinner({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg
-      className={`animate-spin text-on-surface-variant ${className}`}
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      aria-hidden
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
-  );
-}
-
-function PaperclipIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5"
-      aria-hidden
-    >
-      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-    </svg>
-  );
-}
-
-function SendIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className="h-[18px] w-[18px]"
-      aria-hidden
-    >
-      <path d="M12 4 7.25 10.75H10.5v8.25h3v-8.25H16.75L12 4z" />
-    </svg>
-  );
-}
-
-function StopIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className="h-3.5 w-3.5"
-      aria-hidden
-    >
-      <rect x="6" y="6" width="12" height="12" rx="1" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      className="h-4 w-4"
-      aria-hidden
-    >
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function WarningIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5 shrink-0"
-      aria-hidden
-    >
-      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  );
-}
-
-function RetryIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4"
-      aria-hidden
-    >
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M8 16H3v5" />
-    </svg>
-  );
 }
 
 function SearchSkeletonCard() {
@@ -298,105 +112,6 @@ function BriefPreviewPanel({
         {formatBriefPreview(preview)}
       </pre>
     </details>
-  );
-}
-
-function SourcePill({ source }: { source: Source }) {
-  const pillClass =
-    "inline-flex items-center rounded-lg border border-outline-variant bg-background px-3 py-1.5 font-mono text-xs text-foreground transition-colors hover:bg-surface-container-low";
-
-  if (source.kind === "url") {
-    return (
-      <a href={source.url} target="_blank" rel="noreferrer" className={pillClass}>
-        {source.title}
-      </a>
-    );
-  }
-  return <span className={pillClass}>{source.filename}</span>;
-}
-
-function BriefArticle({
-  brief,
-  sources,
-  searched,
-  searchedDocs,
-}: {
-  brief: ResearchBrief;
-  sources: Source[];
-  searched: boolean;
-  searchedDocs: boolean;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  async function copyBrief() {
-    await navigator.clipboard.writeText(formatBriefForCopy(brief, sources));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  return (
-    <article className="rounded-lg border border-outline-variant p-6">
-      <span className="inline-block rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-        Research Brief
-      </span>
-
-      <h2 className="font-serif mt-4 text-[28px] font-semibold leading-tight tracking-tight text-foreground sm:text-[32px]">
-        {brief.headline}
-      </h2>
-
-      <div className="mt-2 text-base leading-relaxed">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={briefMarkdownComponents}
-        >
-          {brief.summary}
-        </ReactMarkdown>
-      </div>
-
-      <ol className="mt-4 list-decimal space-y-2 pl-5 text-base leading-relaxed">
-        {brief.key_points.map((point) => (
-          <li key={point} className="text-foreground">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={inlineMarkdownComponents}
-            >
-              {point}
-            </ReactMarkdown>
-          </li>
-        ))}
-      </ol>
-
-      {sources.length > 0 && (
-        <div className="mt-8">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-            Sources &amp; Citations
-          </h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {dedupeSources(sources).map((s) => (
-              <SourcePill key={sourceKey(s)} source={s} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-8 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-        <span>{searched ? "Grounded with web search" : "No web search"}</span>
-        <span>
-          {searchedDocs ? "Grounded with documents" : "No document search"}
-        </span>
-        <span>Confidence: {brief.confidence}</span>
-      </div>
-
-      <div className="mt-6">
-        <button
-          type="button"
-          onClick={() => void copyBrief()}
-          className="rounded-lg border border-outline-variant px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-container-low"
-        >
-          {copied ? "Copied!" : "Copy Brief"}
-        </button>
-      </div>
-    </article>
   );
 }
 
