@@ -156,9 +156,11 @@ function EmptyState() {
 
 function StoppedNotice({
   state,
+  canRegenerate,
   onRegenerate,
 }: {
   state?: ResearchUIState;
+  canRegenerate: boolean;
   onRegenerate: () => void;
 }) {
   return (
@@ -176,14 +178,16 @@ function StoppedNotice({
         <BriefPreviewPanel preview={state.briefPreview} />
       )}
 
-      <button
-        type="button"
-        onClick={onRegenerate}
-        className="inline-flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-container-low"
-      >
-        <RetryIcon />
-        Regenerate
-      </button>
+      {canRegenerate && (
+        <button
+          type="button"
+          onClick={onRegenerate}
+          className="inline-flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-container-low"
+        >
+          <RetryIcon />
+          Regenerate
+        </button>
+      )}
     </div>
   );
 }
@@ -461,6 +465,7 @@ export function ResearchChat() {
                   {interrupted && (
                     <StoppedNotice
                       state={research}
+                      canRegenerate={isLast}
                       onRegenerate={() =>
                         regenerate({ messageId: assistant!.id })
                       }
