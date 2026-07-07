@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useMemo, useRef, useState } from "react";
-import { BriefArticle } from "@/components/research-chat/BriefArticle";
+import { BriefArticle } from "./BriefArticle";
 import {
   PaperclipIcon,
   PlusIcon,
@@ -12,7 +12,7 @@ import {
   Spinner,
   StopIcon,
   WarningIcon,
-} from "@/components/research-chat/icons";
+} from "./icons";
 import { type ResearchUIState } from "@/lib/research-state";
 import {
   getResearchPart,
