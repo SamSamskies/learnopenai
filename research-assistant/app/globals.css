@@ -20,8 +20,10 @@
   --surface-container-low: #f3f4f5;
   --surface-container: #edeeef;
   --error: #ba1a1a;
+  --on-error: #ffffff;
   --error-container: #ffdad6;
   --on-error-container: #93000a;
+  --inverse-surface: #2e3132;
 }
 
 @theme inline {
@@ -37,8 +39,10 @@
   --color-surface-container-low: var(--surface-container-low);
   --color-surface-container: var(--surface-container);
   --color-error: var(--error);
+  --color-on-error: var(--on-error);
   --color-error-container: var(--error-container);
   --color-on-error-container: var(--on-error-container);
+  --color-inverse-surface: var(--inverse-surface);
   --font-sans: var(--font-geist-sans);
   --font-serif: var(--font-source-serif);
   --font-mono: var(--font-geist-mono);

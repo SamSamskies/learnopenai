@@ -22,6 +22,7 @@ import {
   type ResearchUIMessage,
 } from "@/lib/research-ui-message";
 import { formatTransportError } from "@/lib/format-transport-error";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 const SESSION_KEY = "researchSessionId";
 const NEAR_BOTTOM_THRESHOLD = 120;
@@ -278,6 +279,8 @@ export function ResearchChat() {
   }, [messages]);
 
   const isEmpty = turns.length === 0;
+  const nothingToReset =
+    isEmpty && uploadedFiles.length === 0 && !input.trim();
 
   async function uploadFile(file: File) {
     setUploading(true);
@@ -309,6 +312,8 @@ export function ResearchChat() {
       }
     }
   }
+
+  const [confirmNewChat, setConfirmNewChat] = useState(false);
 
   async function newChat() {
     stop();
@@ -429,8 +434,14 @@ export function ResearchChat() {
           </span>
           <button
             type="button"
-            onClick={() => void newChat()}
-            disabled={busy || uploading}
+            onClick={() => {
+              if (isEmpty && uploadedFiles.length === 0) {
+                void newChat();
+                return;
+              }
+              setConfirmNewChat(true);
+            }}
+            disabled={busy || uploading || nothingToReset}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PlusIcon />
@@ -646,6 +657,18 @@ export function ResearchChat() {
           </form>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmNewChat}
+        title="Start a new chat?"
+        description="This clears your conversation and uploaded documents from this session. This can't be undone."
+        confirmLabel="New chat"
+        destructive
+        onConfirm={() => {
+          setConfirmNewChat(false);
+          void newChat();
+        }}
+        onCancel={() => setConfirmNewChat(false)}
+      />
     </div>
   );
 }
