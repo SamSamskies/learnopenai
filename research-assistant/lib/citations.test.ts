@@ -1,26 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { prepareCitedText, stripCitations } from "@/lib/citations";
-import { buildCitationIndexMap, type Source } from "@/lib/research-state";
-
-describe("buildCitationIndexMap", () => {
-  it("maps duplicate annotations to the same deduplicated index", () => {
-    const sources: Source[] = [
-      { kind: "url", title: "A", url: "https://a.com/1" },
-      { kind: "url", title: "B", url: "https://b.com/" },
-      { kind: "url", title: "A again", url: "https://a.com/1" },
-      { kind: "url", title: "C", url: "https://c.com/" },
-    ];
-
-    expect(buildCitationIndexMap(sources)).toEqual(
-      new Map([
-        [1, 1],
-        [2, 2],
-        [3, 1],
-        [4, 3],
-      ])
-    );
-  });
-});
+import type { Source } from "./research-state";
+import { prepareCitedText, stripCitations } from "./citations";
 
 describe("prepareCitedText", () => {
   const sources: Source[] = [

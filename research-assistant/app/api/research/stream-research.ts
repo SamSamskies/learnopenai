@@ -3,7 +3,6 @@ import "server-only";
 import { openai } from "@ai-sdk/openai";
 import { Output, streamText } from "ai";
 import { ResearchBrief } from "@/lib/schemas";
-import { extractSources } from "@/lib/extract-sources";
 import {
   clampBriefConfidence,
   createResearchState,
@@ -11,6 +10,7 @@ import {
   type ResearchUIState,
   type Source,
 } from "@/lib/research-state";
+import { extractSources } from "./extract-sources";
 
 export type { ResearchPhase, ResearchUIState, Source } from "@/lib/research-state";
 export { createResearchState } from "@/lib/research-state";

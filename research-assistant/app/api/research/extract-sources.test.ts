@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractSources } from "@/lib/extract-sources";
+import { extractSources } from "./extract-sources";
 
 describe("extractSources", () => {
   it("extracts url sources from text-part url_citation annotations", () => {

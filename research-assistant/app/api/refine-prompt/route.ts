@@ -1,5 +1,18 @@
-import { guard } from "@/lib/guard";
-import { refinePrompt } from "@/lib/refine-prompt";
+import { openai } from "@ai-sdk/openai";
+import { generateText } from "ai";
+import { guard } from "@/app/api/lib/guard";
+
+const INSTRUCTIONS =
+  "Improve research questions. Rewrite the draft into one clear, specific question. Preserve topic and constraints. Do not invent facts. Return only the improved question.";
+
+async function refinePrompt(draft: string): Promise<string> {
+  const { text } = await generateText({
+    model: openai("gpt-4o-mini"),
+    system: INSTRUCTIONS,
+    prompt: draft,
+  });
+  return text.trim();
+}
 
 export async function POST(req: Request) {
   const auth = guard.checkAuth(req);

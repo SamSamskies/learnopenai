@@ -1,4 +1,4 @@
-import { clearSession } from "@/lib/sessions";
+import { clearSession } from "@/app/api/lib/sessions";
 
 export async function DELETE(req: Request) {
   const sessionId = new URL(req.url).searchParams.get("id");

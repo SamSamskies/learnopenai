@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { clampBriefConfidence } from "@/lib/research-state";
+import { buildCitationIndexMap, clampBriefConfidence, type Source } from "./research-state";
+
+describe("buildCitationIndexMap", () => {
+  it("maps duplicate annotations to the same deduplicated index", () => {
+    const sources: Source[] = [
+      { kind: "url", title: "A", url: "https://a.com/1" },
+      { kind: "url", title: "B", url: "https://b.com/" },
+      { kind: "url", title: "A again", url: "https://a.com/1" },
+      { kind: "url", title: "C", url: "https://c.com/" },
+    ];
+
+    expect(buildCitationIndexMap(sources)).toEqual(
+      new Map([
+        [1, 1],
+        [2, 2],
+        [3, 1],
+        [4, 3],
+      ])
+    );
+  });
+});
 
 describe("clampBriefConfidence", () => {
   const brief = {

@@ -1,7 +1,41 @@
-import { guard } from "@/lib/guard";
-import { uploadDocToSession } from "@/lib/upload-doc";
+import OpenAI from "openai";
+import { guard } from "@/app/api/lib/guard";
+import { getSession, updateSession } from "@/app/api/lib/sessions";
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
+const openai = new OpenAI();
+
+async function uploadDocToSession(
+  sessionId: string,
+  file: File
+): Promise<{ name: string; fileId: string }> {
+  const session = getSession(sessionId);
+  let vectorStoreId = session.vectorStoreId;
+
+  if (!vectorStoreId) {
+    const store = await openai.vectorStores.create({
+      name: `research-${sessionId.slice(0, 8)}`,
+    });
+    vectorStoreId = store.id;
+    updateSession(sessionId, { vectorStoreId });
+  }
+
+  const uploaded = await openai.files.create({
+    file,
+    purpose: "assistants",
+  });
+
+  const indexed = await openai.vectorStores.files.createAndPoll(vectorStoreId, {
+    file_id: uploaded.id,
+  });
+  if (indexed.status === "failed") {
+    throw new Error(`Indexing failed for ${file.name}`);
+  }
+
+  const entry = { name: file.name, fileId: uploaded.id };
+  updateSession(sessionId, { files: [...session.files, entry] });
+  return entry;
+}
 
 export async function POST(req: Request) {
   const auth = guard.checkAuth(req);

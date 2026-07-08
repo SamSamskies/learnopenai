@@ -2,19 +2,19 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
 } from "ai";
-import { guard } from "@/lib/guard";
+import { guard } from "@/app/api/lib/guard";
+import {
+  getLastResponseId,
+  getSession,
+  setLastResponseId,
+} from "@/app/api/lib/sessions";
 import { createResearchState } from "@/lib/research-state";
 import {
   lastUserText,
   RESEARCH_PART_ID,
   type ResearchUIMessage,
 } from "@/lib/research-ui-message";
-import {
-  getLastResponseId,
-  getSession,
-  setLastResponseId,
-} from "@/lib/sessions";
-import { publicError, streamResearch } from "@/lib/stream-research";
+import { publicError, streamResearch } from "./stream-research";
 
 export const runtime = "nodejs";
 

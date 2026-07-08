@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { POST } from "@/app/api/research/route";
-import { readResearchStream } from "@/lib/read-research-stream";
 import type { ResearchUIMessage } from "@/lib/research-ui-message";
+import { readResearchStream } from "./read-research-stream";
+import { POST } from "./route";
 
 const mockStreamText = vi.hoisted(() => vi.fn());
 
