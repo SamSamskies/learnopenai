@@ -1,4 +1,3 @@
-import { generateConfidenceCopy } from "@/lib/generate-confidence-copy";
 import type { ResearchBrief } from "@/lib/schemas";
 import type { Source } from "@/lib/research-state";
 import { dedupeSources } from "@/lib/research-state";
@@ -8,6 +7,29 @@ const toneClass = {
   caution: "border-warn/30 bg-warn/5 text-warn",
   warning: "border-accent/30 bg-accent-soft text-accent",
 } as const;
+
+function generateConfidenceCopy(level: ResearchBrief["confidence"]): {
+  label: string;
+  tone: keyof typeof toneClass;
+} {
+  switch (level) {
+    case "high":
+      return {
+        label: "Well-supported by retrieved sources",
+        tone: "positive",
+      };
+    case "medium":
+      return {
+        label: "Partially supported — verify key claims",
+        tone: "caution",
+      };
+    case "low":
+      return {
+        label: "Limited source coverage — treat as a draft",
+        tone: "warning",
+      };
+  }
+}
 
 export function TrustBar({
   brief,

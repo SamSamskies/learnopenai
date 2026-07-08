@@ -14,14 +14,14 @@ import {
   StopIcon,
   WarningIcon,
 } from "./icons";
-import { deriveInFlightPhase } from "@/lib/derive-in-flight-phase";
+import { deriveInFlightPhase } from "./derive-in-flight-phase";
+import { formatTransportError } from "./format-transport-error";
 import { type ResearchUIState } from "@/lib/research-state";
 import {
   getResearchPart,
   getUserText,
   type ResearchUIMessage,
 } from "@/lib/research-ui-message";
-import { formatTransportError } from "@/lib/format-transport-error";
 import { ConfirmDialog } from "../ConfirmDialog";
 
 const SESSION_KEY = "researchSessionId";
