@@ -6,6 +6,7 @@ import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { dedupeSources, type Source } from "@/lib/research-state";
 import type { ResearchBrief } from "@/lib/schemas";
+import { TrustBar } from "./TrustBar";
 
 function formatBriefForCopy(brief: ResearchBrief, sources: Source[]): string {
   const lines = [
@@ -108,6 +109,13 @@ export function BriefArticle({
         {brief.headline}
       </h2>
 
+      <TrustBar
+        brief={brief}
+        sources={sources}
+        searched={searched}
+        searchedDocs={searchedDocs}
+      />
+
       <div className="mt-2 text-base leading-relaxed">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -131,7 +139,7 @@ export function BriefArticle({
       </ol>
 
       {sources.length > 0 && (
-        <div className="mt-8">
+        <div id="brief-sources" className="mt-8 scroll-mt-4">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
             Sources &amp; Citations
           </h3>
@@ -142,14 +150,6 @@ export function BriefArticle({
           </div>
         </div>
       )}
-
-      <div className="mt-8 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-        <span>{searched ? "Grounded with web search" : "No web search"}</span>
-        <span>
-          {searchedDocs ? "Grounded with documents" : "No document search"}
-        </span>
-        <span>Confidence: {brief.confidence}</span>
-      </div>
 
       <div className="mt-6">
         <button
