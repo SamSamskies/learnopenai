@@ -3,22 +3,11 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BriefArticle } from "./BriefArticle";
+import { ChatComposer } from "./ChatComposer";
+import { ErrorBanner } from "./ErrorBanner";
+import { ChevronDownIcon, PlusIcon } from "./icons";
+import { ResearchTurn } from "./ResearchTurn";
 import {
-  ChevronDownIcon,
-  PaperclipIcon,
-  PlusIcon,
-  RetryIcon,
-  SendIcon,
-  Spinner,
-  StopIcon,
-  WarningIcon,
-} from "./icons";
-import { deriveInFlightPhase } from "./derive-in-flight-phase";
-import { formatTransportError } from "./format-transport-error";
-import { type ResearchUIState } from "@/lib/research-state";
-import {
-  getResearchPart,
   getUserText,
   type ResearchUIMessage,
 } from "@/lib/research-ui-message";
@@ -41,133 +30,30 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-function formatBriefPreview(preview: string): string {
-  try {
-    return JSON.stringify(JSON.parse(preview), null, 2);
-  } catch {
-    return preview;
+function formatTransportError(error: Error): string {
+  const msg = error.message.toLowerCase();
+
+  if (error.name === "AbortError") {
+    return "The request was cancelled.";
   }
-}
+  if (
+    msg.includes("failed to fetch") ||
+    msg.includes("network") ||
+    msg.includes("load failed")
+  ) {
+    return "Connection problem — check your network and try again.";
+  }
+  if (msg.includes("401") || msg.includes("403") || msg.includes("unauthorized")) {
+    return "You're not signed in. Refresh the page and try again.";
+  }
+  if (msg.includes("429") || msg.includes("rate limit")) {
+    return "Too many requests — wait a moment and try again.";
+  }
+  if (msg.includes("500") || msg.includes("502") || msg.includes("503")) {
+    return "Our servers hit a snag. Try again in a few seconds.";
+  }
 
-function resizeTextarea(el: HTMLTextAreaElement) {
-  el.style.height = "auto";
-  el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-}
-
-function SearchSkeletonCard() {
-  return (
-    <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-4">
-      <div className="flex items-start gap-3">
-        <div className="h-8 w-8 shrink-0 animate-pulse rounded bg-surface-container" />
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="h-3.5 w-3/4 animate-pulse rounded bg-surface-container" />
-          <div className="h-3 w-1/2 animate-pulse rounded bg-surface-container" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserMessage({ text }: { text: string }) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-lg bg-surface-container-low px-4 py-3 text-base leading-relaxed text-foreground">
-        {text}
-      </div>
-    </div>
-  );
-}
-
-function SubmittedAck() {
-  return (
-    <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-      <Spinner />
-      <span>Got it — starting research…</span>
-    </div>
-  );
-}
-
-function ThinkingGap() {
-  return (
-    <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-      <Spinner />
-      <span>Thinking…</span>
-    </div>
-  );
-}
-
-function searchStatusMessage(searched: boolean, searchedDocs: boolean): string {
-  if (searchedDocs && searched) return "Searching documents and the web…";
-  if (searchedDocs) return "Searching documents…";
-  if (searched) return "Searching the web…";
-  return "Working…";
-}
-
-function SearchingStatus({
-  searched = false,
-  searchedDocs = false,
-}: {
-  searched?: boolean;
-  searchedDocs?: boolean;
-}) {
-  const isSearching = searched || searchedDocs;
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-        <Spinner />
-        <span>{searchStatusMessage(searched, searchedDocs)}</span>
-      </div>
-      {isSearching && <SearchSkeletonCard />}
-    </div>
-  );
-}
-
-function BriefPreviewPanel({
-  preview,
-  defaultOpen = false,
-}: {
-  preview: string;
-  defaultOpen?: boolean;
-}) {
-  return (
-    <details
-      open={defaultOpen}
-      className="overflow-hidden rounded-lg border border-outline-variant"
-    >
-      <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-container-low">
-        Brief preview
-      </summary>
-      <pre className="overflow-x-auto border-t border-outline-variant px-4 py-3 font-mono text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-        {formatBriefPreview(preview)}
-      </pre>
-    </details>
-  );
-}
-
-function ErrorBanner({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry: () => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-start gap-3 rounded-lg border border-error/20 bg-error-container px-4 py-3 text-on-error-container">
-        <WarningIcon />
-        <p className="text-sm leading-relaxed">{message}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="inline-flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-container-low"
-      >
-        <RetryIcon />
-        Try again
-      </button>
-    </div>
-  );
+  return "Something went wrong. Please try again.";
 }
 
 function EmptyState() {
@@ -180,44 +66,6 @@ function EmptyState() {
         Upload documents, ask complex questions, or explore the latest with
         authoritative sources.
       </p>
-    </div>
-  );
-}
-
-function StoppedNotice({
-  state,
-  canRegenerate,
-  onRegenerate,
-}: {
-  state?: ResearchUIState;
-  canRegenerate: boolean;
-  onRegenerate: () => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="inline-flex items-center rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-          Stopped
-        </span>
-        <span className="text-sm text-on-surface-variant">
-          You stopped this response.
-        </span>
-      </div>
-
-      {state?.briefPreview && (
-        <BriefPreviewPanel preview={state.briefPreview} />
-      )}
-
-      {canRegenerate && (
-        <button
-          type="button"
-          onClick={onRegenerate}
-          className="inline-flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-container-low"
-        >
-          <RetryIcon />
-          Regenerate
-        </button>
-      )}
     </div>
   );
 }
@@ -415,12 +263,12 @@ export function ResearchChat() {
   function retryTransportError() {
     const last = turns.at(-1);
     if (!last) return;
-  
+
     if (last.assistant) {
       regenerate({ messageId: last.assistant.id });
       return;
     }
-  
+
     // Failed before an assistant message existed — safe to re-send once
     send(getUserText(last.user));
   }
@@ -452,114 +300,34 @@ export function ResearchChat() {
 
       <div className="relative flex-1 overflow-hidden">
         <div ref={scrollContainerRef} className="h-full overflow-y-auto">
-        <div className="mx-auto max-w-[720px] px-6 py-8">
-          {isEmpty && <EmptyState />}
+          <div className="mx-auto max-w-[720px] px-6 py-8">
+            {isEmpty && <EmptyState />}
 
-          <div className="flex flex-col gap-10">
-            {turns.map((turn, index) => {
-              const assistant = turn.assistant;
-              const research = assistant
-                ? getResearchPart(assistant)?.data
-                : undefined;
-              const question = getUserText(turn.user);
-              const isLast = index === turns.length - 1;
-              const inFlight = isLast && busy;
-              const interrupted =
-                !!assistant &&
-                !!research &&
-                research.phase !== "done" &&
-                research.phase !== "error";
-
-              const showWaitUI =
-                inFlight &&
-                research?.phase !== "done" &&
-                research?.phase !== "error";
-
-              if (showWaitUI) {
-                const waitPhase = deriveInFlightPhase(status, research);
-
-                return (
-                  <div
-                    key={turn.user.id}
-                    ref={isLast ? lastTurnRef : undefined}
-                    className="flex flex-col gap-6"
-                  >
-                    <UserMessage text={question} />
-
-                    {waitPhase === "submitted" && <SubmittedAck />}
-                    {waitPhase === "thinking" && <ThinkingGap />}
-                    {waitPhase === "working" && research && (
-                      <SearchingStatus
-                        searched={research.searched}
-                        searchedDocs={research.searchedDocs}
-                      />
-                    )}
-                    {waitPhase === "working" &&
-                      research?.phase === "streaming-answer" &&
-                      research.briefPreview && (
-                        <BriefPreviewPanel
-                          preview={research.briefPreview}
-                          defaultOpen
-                        />
-                      )}
-                  </div>
-                );
-              }
-
-              return (
-                <div
+            <div className="flex flex-col gap-10">
+              {turns.map((turn, index) => (
+                <ResearchTurn
                   key={turn.user.id}
-                  ref={isLast ? lastTurnRef : undefined}
-                  className="flex flex-col gap-6"
-                >
-                  <UserMessage text={question} />
-                  {research?.phase === "done" && research.brief && (
-                    <>
-                      <BriefArticle
-                        brief={research.brief}
-                        sources={research.sources}
-                        searched={research.searched}
-                        searchedDocs={research.searchedDocs}
-                      />
-                      {research.briefPreview && (
-                        <BriefPreviewPanel preview={research.briefPreview} />
-                      )}
-                    </>
-                  )}
-                  {research?.phase === "error" && (
-                    <ErrorBanner
-                      message={
-                        research.error ??
-                        "Something went wrong while searching. Please try again."
-                      }
-                      onRetry={() => regenerate({ messageId: assistant!.id })}
-                    />
-                  )}
-                  {interrupted && (
-                    <StoppedNotice
-                      state={research}
-                      canRegenerate={isLast}
-                      onRegenerate={() =>
-                        regenerate({ messageId: assistant!.id })
-                      }
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {error && (
-            <div className="mt-6">
-              <ErrorBanner
-                message={formatTransportError(error)}
-                onRetry={retryTransportError}
-              />
+                  ref={index === turns.length - 1 ? lastTurnRef : undefined}
+                  turn={turn}
+                  isLast={index === turns.length - 1}
+                  busy={busy}
+                  status={status}
+                  onRegenerate={(messageId) => regenerate({ messageId })}
+                />
+              ))}
             </div>
-          )}
 
-          <div ref={bottomRef} aria-hidden="true" className="h-16" />
-        </div>
+            {error && (
+              <div className="mt-6">
+                <ErrorBanner
+                  message={formatTransportError(error)}
+                  onRetry={retryTransportError}
+                />
+              </div>
+            )}
+
+            <div ref={bottomRef} aria-hidden="true" className="h-16" />
+          </div>
         </div>
 
         {showScrollButton && (
@@ -574,89 +342,22 @@ export function ResearchChat() {
         )}
       </div>
 
-      <div className="shrink-0 border-t border-outline-variant/60 bg-background">
-        <div className="mx-auto max-w-[720px] px-6 py-4">
-          {(uploadedFiles.length > 0 || uploadError) && (
-            <div className="mb-3 flex flex-col gap-1.5">
-              {uploadedFiles.length > 0 && (
-                <ul className="flex flex-wrap gap-2">
-                  {uploadedFiles.map((f) => (
-                    <li
-                      key={f.name}
-                      className="rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs text-on-surface-variant"
-                    >
-                      {f.name}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {uploadError && (
-                <p className="text-sm text-error">{uploadError}</p>
-              )}
-            </div>
-          )}
+      <ChatComposer
+        input={input}
+        onInputChange={setInput}
+        onSubmit={onSubmit}
+        onKeyDown={onKeyDown}
+        uploadedFiles={uploadedFiles}
+        uploadError={uploadError}
+        fileInputRef={fileInputRef}
+        textareaRef={textareaRef}
+        onFileSelect={(file) => void uploadFile(file)}
+        busy={busy}
+        uploading={uploading}
+        canSend={canSend}
+        onStop={() => stop()}
+      />
 
-          <form
-            onSubmit={onSubmit}
-            className="flex items-end gap-2 rounded-xl border border-outline-variant bg-background p-2 pl-3 transition-colors focus-within:border-outline"
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.md,.txt"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void uploadFile(file);
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={busy || uploading}
-              aria-label="Upload document"
-              className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <PaperclipIcon />
-            </button>
-            <textarea
-              ref={textareaRef}
-              name="message"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                resizeTextarea(e.target);
-              }}
-              onKeyDown={onKeyDown}
-              rows={1}
-              className="max-h-[200px] min-h-[36px] flex-1 resize-none bg-transparent py-2 text-base text-foreground outline-none placeholder:text-on-surface-variant/70 disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder={
-                busy ? "Generating response…" : "Message Research Assistant…"
-              }
-              disabled={busy || uploading}
-            />
-            {busy ? (
-              <button
-                type="button"
-                onClick={() => stop()}
-                aria-label="Stop generating"
-                className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-dark"
-              >
-                <StopIcon />
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!canSend}
-                aria-label="Send message"
-                className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:bg-surface-container disabled:text-on-surface-variant/50"
-              >
-                <SendIcon />
-              </button>
-            )}
-          </form>
-        </div>
-      </div>
       <ConfirmDialog
         open={confirmNewChat}
         title="Start a new chat?"
