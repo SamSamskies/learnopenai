@@ -101,11 +101,7 @@ export function BriefArticle({
 
   return (
     <article className="rounded-lg border border-outline-variant p-6">
-      <span className="inline-block rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-        Research Brief
-      </span>
-
-      <h2 className="font-serif mt-4 text-[28px] font-semibold leading-tight tracking-tight text-foreground sm:text-[32px]">
+      <h2 className="font-serif text-[28px] font-semibold leading-tight tracking-tight text-foreground sm:text-[32px]">
         {brief.headline}
       </h2>
 
