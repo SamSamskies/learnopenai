@@ -85,6 +85,9 @@ export function ResearchChat() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [refining, setRefining] = useState(false);
+  const [refined, setRefined] = useState(false);
+  const draftBeforeRefineRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -180,6 +183,8 @@ export function ResearchChat() {
     setUploadedFiles([]);
     setUploadError(null);
     setInput("");
+    setRefined(false);
+    draftBeforeRefineRef.current = null;
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -243,9 +248,59 @@ export function ResearchChat() {
     setShowScrollButton(false);
     sendMessage({ text: message });
     setInput("");
+    setRefined(false);
+    draftBeforeRefineRef.current = null;
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+  }
+
+  async function onRefine() {
+    const draft = input.trim();
+    if (draft.length < 8 || busy || uploading || refining) return;
+    draftBeforeRefineRef.current = input;
+    setRefining(true);
+    try {
+      const res = await fetch("/api/refine-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ draft }),
+      });
+      if (!res.ok) throw new Error("refine failed");
+      const { refined: next } = await res.json();
+      setInput(next);
+      setRefined(true);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.style.height = "auto";
+          el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+        }
+        el?.focus();
+      });
+    } finally {
+      setRefining(false);
+    }
+  }
+
+  function undoRefine() {
+    if (draftBeforeRefineRef.current != null) {
+      setInput(draftBeforeRefineRef.current);
+      draftBeforeRefineRef.current = null;
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.style.height = "auto";
+          el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+        }
+      });
+    }
+    setRefined(false);
+  }
+
+  function onInputChange(value: string) {
+    setInput(value);
+    if (refined) setRefined(false);
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -344,7 +399,7 @@ export function ResearchChat() {
 
       <ChatComposer
         input={input}
-        onInputChange={setInput}
+        onInputChange={onInputChange}
         onSubmit={onSubmit}
         onKeyDown={onKeyDown}
         uploadedFiles={uploadedFiles}
@@ -354,6 +409,10 @@ export function ResearchChat() {
         onFileSelect={(file) => void uploadFile(file)}
         busy={busy}
         uploading={uploading}
+        refining={refining}
+        refined={refined}
+        onRefine={() => void onRefine()}
+        onUndoRefine={undoRefine}
         canSend={canSend}
         onStop={() => stop()}
       />

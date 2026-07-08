@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { PaperclipIcon, SendIcon, StopIcon } from "./icons";
+import { PaperclipIcon, SendIcon, SparkleIcon, Spinner, StopIcon } from "./icons";
 
 function resizeTextarea(el: HTMLTextAreaElement) {
   el.style.height = "auto";
@@ -18,6 +18,10 @@ export function ChatComposer({
   onFileSelect,
   busy,
   uploading,
+  refining,
+  refined,
+  onRefine,
+  onUndoRefine,
   canSend,
   onStop,
 }: {
@@ -32,6 +36,10 @@ export function ChatComposer({
   onFileSelect: (file: File) => void;
   busy: boolean;
   uploading: boolean;
+  refining: boolean;
+  refined: boolean;
+  onRefine: () => void;
+  onUndoRefine: () => void;
   canSend: boolean;
   onStop: () => void;
 }) {
@@ -58,6 +66,24 @@ export function ChatComposer({
           </div>
         )}
 
+        {refining && (
+          <div className="mb-2 rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground">
+            <span>Refining your question…</span>
+          </div>
+        )}
+        {refined && !refining && (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground">
+            <span>Refined — review before sending</span>
+            <button
+              type="button"
+              onClick={onUndoRefine}
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Undo
+            </button>
+          </div>
+        )}
+
         <form
           onSubmit={onSubmit}
           className="flex items-end gap-2 rounded-xl border border-outline-variant bg-background p-2 pl-3 transition-colors focus-within:border-outline"
@@ -80,6 +106,17 @@ export function ChatComposer({
             className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PaperclipIcon />
+          </button>
+          <button
+            type="button"
+            onClick={onRefine}
+            disabled={
+              input.trim().length < 8 || busy || uploading || refining
+            }
+            aria-label="Refine question"
+            className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {refining ? <Spinner className="h-5 w-5" /> : <SparkleIcon />}
           </button>
           <textarea
             ref={textareaRef}
