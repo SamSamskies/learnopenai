@@ -1,9 +1,29 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { PaperclipIcon, SendIcon, SparkleIcon, Spinner, StopIcon } from "./icons";
 
 function resizeTextarea(el: HTMLTextAreaElement) {
   el.style.height = "auto";
   el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+}
+
+function IconButtonTooltip({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className="group/tooltip relative mb-1 inline-flex shrink-0">
+      {children}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-sm transition-opacity duration-150 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100"
+      >
+        {label}
+      </span>
+    </span>
+  );
 }
 
 export function ChatComposer({
@@ -43,6 +63,12 @@ export function ChatComposer({
   canSend: boolean;
   onStop: () => void;
 }) {
+  const refineTooShort =
+    input.trim().length < 8 && !busy && !uploading && !refining;
+  const refineTooltip = refineTooShort
+    ? "Refine question — type at least 8 characters"
+    : "Refine question";
+
   return (
     <div className="shrink-0 border-t border-outline-variant/60 bg-background">
       <div className="mx-auto max-w-[720px] px-6 py-4">
@@ -98,26 +124,30 @@ export function ChatComposer({
               if (file) onFileSelect(file);
             }}
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={busy || uploading}
-            aria-label="Upload document"
-            className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <PaperclipIcon />
-          </button>
-          <button
-            type="button"
-            onClick={onRefine}
-            disabled={
-              input.trim().length < 8 || busy || uploading || refining
-            }
-            aria-label="Refine question"
-            className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {refining ? <Spinner className="h-5 w-5" /> : <SparkleIcon />}
-          </button>
+          <IconButtonTooltip label="Upload document">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy || uploading}
+              aria-label="Upload document"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <PaperclipIcon />
+            </button>
+          </IconButtonTooltip>
+          <IconButtonTooltip label={refineTooltip}>
+            <button
+              type="button"
+              onClick={onRefine}
+              disabled={
+                input.trim().length < 8 || busy || uploading || refining
+              }
+              aria-label="Refine question"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {refining ? <Spinner className="h-5 w-5" /> : <SparkleIcon />}
+            </button>
+          </IconButtonTooltip>
           <textarea
             ref={textareaRef}
             name="message"
@@ -135,23 +165,27 @@ export function ChatComposer({
             disabled={busy || uploading}
           />
           {busy ? (
-            <button
-              type="button"
-              onClick={onStop}
-              aria-label="Stop generating"
-              className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-dark"
-            >
-              <StopIcon />
-            </button>
+            <IconButtonTooltip label="Stop generating">
+              <button
+                type="button"
+                onClick={onStop}
+                aria-label="Stop generating"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-dark"
+              >
+                <StopIcon />
+              </button>
+            </IconButtonTooltip>
           ) : (
-            <button
-              type="submit"
-              disabled={!canSend}
-              aria-label="Send message"
-              className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:bg-surface-container disabled:text-on-surface-variant/50"
-            >
-              <SendIcon />
-            </button>
+            <IconButtonTooltip label="Send message">
+              <button
+                type="submit"
+                disabled={!canSend}
+                aria-label="Send message"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-on-primary transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:bg-surface-container disabled:text-on-surface-variant/50"
+              >
+                <SendIcon />
+              </button>
+            </IconButtonTooltip>
           )}
         </form>
       </div>
