@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepareCitedText } from "@/lib/citations";
+import { prepareCitedText, stripCitations } from "@/lib/citations";
 import { buildCitationIndexMap, type Source } from "@/lib/research-state";
 
 describe("buildCitationIndexMap", () => {
@@ -151,5 +151,30 @@ describe("prepareCitedText", () => {
 
   it("removes markers when there are no sources", () => {
     expect(prepareCitedText("Fact [1][2].", [])).toBe("Fact.");
+  });
+});
+
+describe("stripCitations", () => {
+  const sources: Source[] = [
+    { kind: "url", title: "ICML", url: "https://icml.cc/2026" },
+    { kind: "url", title: "NeurIPS", url: "https://confroll.com/neurips" },
+  ];
+
+  it("removes citation markers and inline source refs from synthesis text", () => {
+    expect(stripCitations("Claim with refs [1][2][3].", sources)).toBe(
+      "Claim with refs."
+    );
+    expect(
+      stripCitations(
+        "ICML runs in Seoul (icml.cc). NeurIPS is in Sydney (confroll.com).",
+        sources
+      )
+    ).toBe("ICML runs in Seoul. NeurIPS is in Sydney.");
+    expect(
+      stripCitations(
+        "Simple protocol. ([nostr.how](https://nostr.how/) [1])",
+        [{ kind: "url", title: "Nostr How", url: "https://nostr.how/" }]
+      )
+    ).toBe("Simple protocol.");
   });
 });

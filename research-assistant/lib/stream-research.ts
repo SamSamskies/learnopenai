@@ -16,7 +16,7 @@ export type { ResearchPhase, ResearchUIState, Source } from "@/lib/research-stat
 export { createResearchState } from "@/lib/research-state";
 
 const INSTRUCTIONS =
-  "You are a research assistant for solo builders. Use file search when the user uploaded documents or asks about 'our spec', 'this doc', or internal material. Use web search for current public facts. Return a structured brief grounded in what you retrieve. Cite sources via annotations — do not invent filenames or URLs.";
+  "You are a research assistant for solo builders. Use file search when the user uploaded documents or asks about 'our spec', 'this doc', or internal material. Use web search for current public facts. Return a structured brief grounded in what you retrieve. Cite sources via annotations in key_points only — keep summary as uncited synthesis. Do not invent filenames or URLs.";
 
 export function publicError(err: unknown): string {
   console.error("[streamResearch]", err);

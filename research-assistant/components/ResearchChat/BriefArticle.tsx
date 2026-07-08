@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { dedupeSources, type Source } from "@/lib/research-state";
-import { prepareCitedText } from "@/lib/citations";
+import { prepareCitedText, stripCitations } from "@/lib/citations";
 import type { ResearchBrief } from "@/lib/schemas";
 import { TrustBar } from "./TrustBar";
 
@@ -13,7 +13,7 @@ function formatBriefForCopy(brief: ResearchBrief, sources: Source[]): string {
   const lines = [
     brief.headline,
     "",
-    brief.summary,
+    stripCitations(brief.summary, sources),
     "",
     ...brief.key_points.map((p) => `• ${p}`),
   ];
@@ -206,9 +206,9 @@ export function BriefArticle({
       <div className="mt-2 text-base leading-relaxed">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          components={citationComponents(numberedSources.length)}
+          components={briefMarkdownComponents}
         >
-          {prepareCitedText(brief.summary, sources)}
+          {stripCitations(brief.summary, sources)}
         </ReactMarkdown>
       </div>
 

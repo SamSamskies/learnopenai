@@ -172,7 +172,7 @@ function withCitationLinks(text: string): string {
   );
 }
 
-export function prepareCitedText(text: string, sources: Source[]): string {
+function normalizeCitationText(text: string, sources: Source[]): string {
   const sourceCount = dedupeSources(sources).length;
   if (sourceCount === 0) {
     return text
@@ -182,9 +182,16 @@ export function prepareCitedText(text: string, sources: Source[]): string {
   }
 
   const indexMap = buildCitationIndexMap(sources);
-  return withCitationLinks(
-    normalizeMarkerClusters(
-      stripInlineSourceRefs(remapCitationNumbers(text, indexMap), sources)
-    )
+  return normalizeMarkerClusters(
+    stripInlineSourceRefs(remapCitationNumbers(text, indexMap), sources)
   );
+}
+
+/** Remove citation markers and inline source refs — for synthesis text like the summary. */
+export function stripCitations(text: string, sources: Source[]): string {
+  return normalizeCitationText(text, sources).replace(CITATION_CLUSTER_RE, "");
+}
+
+export function prepareCitedText(text: string, sources: Source[]): string {
+  return withCitationLinks(normalizeCitationText(text, sources));
 }
