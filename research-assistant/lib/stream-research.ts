@@ -1,12 +1,11 @@
 import "server-only";
 
-import {
-  openai,
-  type OpenaiResponsesTextProviderMetadata,
-} from "@ai-sdk/openai";
+import { openai } from "@ai-sdk/openai";
 import { Output, streamText } from "ai";
 import { ResearchBrief } from "@/lib/schemas";
+import { extractSources } from "@/lib/extract-sources";
 import {
+  clampBriefConfidence,
   createResearchState,
   dedupeSources,
   type ResearchUIState,
@@ -22,35 +21,6 @@ const INSTRUCTIONS =
 export function publicError(err: unknown): string {
   console.error("[streamResearch]", err);
   return "Research request failed. Try again in a moment.";
-}
-
-function extractSources(content: Array<{ type: string; providerMetadata?: unknown }>): Source[] {
-  const sources: Source[] = [];
-
-  for (const part of content) {
-    if (part.type !== "text") continue;
-    const metadata = part.providerMetadata as
-      | OpenaiResponsesTextProviderMetadata
-      | undefined;
-
-    for (const annotation of metadata?.openai?.annotations ?? []) {
-      if (annotation.type === "url_citation") {
-        sources.push({
-          kind: "url",
-          title: annotation.title ?? annotation.url,
-          url: annotation.url,
-        });
-      }
-      if (annotation.type === "file_citation") {
-        sources.push({
-          kind: "file",
-          filename: annotation.filename,
-        });
-      }
-    }
-  }
-
-  return sources;
 }
 
 export async function streamResearch(
@@ -114,7 +84,7 @@ export async function streamResearch(
   const content = await result.content;
 
   state.brief = (await result.output) ?? null;
-  state.sources = dedupeSources(extractSources(content));
+  state.sources = extractSources(content);
   const toolCalls = await result.toolCalls;
   state.searched =
     state.searched ||
@@ -122,6 +92,12 @@ export async function streamResearch(
   state.searchedDocs =
     state.searchedDocs ||
     toolCalls.some((call) => call?.toolName === "file_search");
+  if (state.brief) {
+    state.brief = clampBriefConfidence(
+      state.brief,
+      dedupeSources(state.sources).length
+    );
+  }
   state.phase = "done";
   onSnapshot({ ...state });
 

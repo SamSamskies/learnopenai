@@ -31,6 +31,21 @@ function generateConfidenceCopy(level: ResearchBrief["confidence"]): {
   }
 }
 
+function resolveTrustDisplay(
+  confidence: ResearchBrief["confidence"],
+  sourceCount: number,
+  searched: boolean,
+  searchedDocs: boolean
+): { label: string; tone: keyof typeof toneClass } {
+  if (sourceCount === 0 && (searched || searchedDocs)) {
+    return {
+      label: "Search ran but no sources cited — verify independently",
+      tone: "caution",
+    };
+  }
+  return generateConfidenceCopy(confidence);
+}
+
 export function TrustBar({
   brief,
   sources,
@@ -42,8 +57,13 @@ export function TrustBar({
   searched: boolean;
   searchedDocs: boolean;
 }) {
-  const { label, tone } = generateConfidenceCopy(brief.confidence);
   const count = dedupeSources(sources).length;
+  const { label, tone } = resolveTrustDisplay(
+    brief.confidence,
+    count,
+    searched,
+    searchedDocs
+  );
 
   return (
     <div
