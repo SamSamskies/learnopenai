@@ -8,7 +8,7 @@ export async function POST() {
     const secret = await openai.realtime.clientSecrets.create({
       session: {
         type: 'realtime',
-        model: 'gpt-realtime-2.1',
+        model: 'gpt-realtime-2.1-mini',
         audio: {
           input: {
             noise_reduction: { type: 'far_field' },
