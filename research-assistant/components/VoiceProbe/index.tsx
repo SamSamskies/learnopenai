@@ -1,71 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Spinner } from "./ResearchChat/icons";
+import { PhaseBadge } from "./PhaseBadge";
+import {
+  reduceRealtimePhase,
+  type RealtimePhase,
+} from "./realtimePhase";
 
-export type RealtimePhase =
-  | "idle"
-  | "connecting"
-  | "listening"
-  | "thinking"
-  | "speaking"
-  | "interrupted"
-  | "error";
-
-export function reduceRealtimePhase(
-  prev: RealtimePhase,
-  event: { type: string },
-): RealtimePhase {
-  switch (event.type) {
-    case "session.created":
-      return "idle";
-    case "input_audio_buffer.speech_started":
-      return "listening";
-    case "input_audio_buffer.speech_stopped":
-      return "thinking";
-    case "response.output_audio.delta":
-    case "response.audio.delta":
-    case "response.output_audio_transcript.delta":
-    case "response.audio_transcript.delta":
-    case "output_audio_buffer.started":
-      return "speaking";
-    case "output_audio_buffer.stopped":
-      return "idle";
-    case "response.done":
-    case "response.output_audio.done":
-    case "response.audio.done":
-    case "response.output_audio_transcript.done":
-    case "response.audio_transcript.done":
-      // Generation can finish before WebRTC playback; keep phase until stopped.
-      return prev === "speaking" || prev === "thinking" ? prev : "idle";
-    case "response.cancelled":
-      return "interrupted";
-    case "error":
-      return "error";
-    default:
-      return prev;
-  }
-}
-
-const PHASE_COPY: Record<RealtimePhase, string> = {
-  idle: "Ready — tap Connect",
-  connecting: "Connecting…",
-  listening: "Listening…",
-  thinking: "Thinking…",
-  speaking: "Speaking…",
-  interrupted: "Interrupted — keep talking",
-  error: "Something went wrong",
-};
-
-const PHASE_CHIP: Record<RealtimePhase, string> = {
-  idle: "border-outline-variant bg-surface-container-low text-on-surface-variant",
-  connecting: "border-outline-variant bg-surface-container-low text-on-surface-variant",
-  listening: "border-primary/30 bg-primary/5 text-primary",
-  thinking: "border-outline-variant bg-surface-container text-on-surface-variant",
-  speaking: "border-primary/40 bg-primary/10 text-primary",
-  interrupted: "border-outline-variant bg-surface-container-low text-on-surface-variant",
-  error: "border-error/30 bg-error-container text-on-error-container",
-};
+export { reduceRealtimePhase, type RealtimePhase } from "./realtimePhase";
 
 function mapConnectError(err: unknown): string {
   if (err instanceof DOMException) {
@@ -79,38 +21,6 @@ function mapConnectError(err: unknown): string {
   }
   if (err instanceof Error) return err.message;
   return "Connection failed";
-}
-
-function phaseLabel(phase: RealtimePhase, connected: boolean): string {
-  if (phase === "idle") {
-    return connected ? "Ready" : "Ready — tap Connect";
-  }
-  return PHASE_COPY[phase];
-}
-
-function PhaseBadge({
-  phase,
-  connected,
-}: {
-  phase: RealtimePhase;
-  connected: boolean;
-}) {
-  const showSpinner =
-    phase === "connecting" ||
-    phase === "listening" ||
-    phase === "thinking" ||
-    phase === "speaking";
-
-  return (
-    <div
-      className={`inline-flex items-center gap-3 rounded-xl border px-6 py-4 text-lg font-medium tracking-tight sm:text-xl ${PHASE_CHIP[phase]}`}
-      role="status"
-      aria-live="polite"
-    >
-      {showSpinner && <Spinner className="h-5 w-5" />}
-      <span>{phaseLabel(phase, connected)}</span>
-    </div>
-  );
 }
 
 export function VoiceProbe() {
@@ -162,7 +72,15 @@ export function VoiceProbe() {
     dc.onclose = () => handleConnectionDrop();
   }
 
-  useEffect(() => () => resetSession(), []);
+  useEffect(
+    () => () => {
+      liveRef.current = false;
+      pcRef.current?.close();
+      micRef.current?.getTracks().forEach((track) => track.stop());
+      if (audioRef.current) audioRef.current.srcObject = null;
+    },
+    [],
+  );
 
   async function connect() {
     setErrorMessage(null);
