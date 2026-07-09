@@ -1,15 +1,29 @@
-import { openai } from '@ai-sdk/openai';
+import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
+
+const openai = new OpenAI();
 
 export async function POST() {
   try {
-    const { token } = await openai.experimental_realtime.getToken({
-      model: 'gpt-realtime-2.1',
-      sessionConfig: {
-        voice: 'marin',
+    const secret = await openai.realtime.clientSecrets.create({
+      session: {
+        type: 'realtime',
+        model: 'gpt-realtime-2.1',
+        audio: {
+          input: {
+            noise_reduction: { type: 'far_field' },
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.75,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 700,
+            },
+          },
+          output: { voice: 'marin' },
+        },
       },
     });
-    return NextResponse.json(token);
+    return NextResponse.json(secret.value);
   } catch {
     return NextResponse.json({ error: 'mint failed' }, { status: 500 });
   }
