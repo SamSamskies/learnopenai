@@ -4,6 +4,10 @@ import type { Source } from "@/lib/research-state";
 type ContentPart = {
   type: string;
   providerMetadata?: unknown;
+  sourceType?: string;
+  url?: string;
+  title?: string;
+  id?: string;
 };
 
 /** Citations come from url_citation / file_citation annotations on text parts only. */
@@ -11,25 +15,25 @@ export function extractSources(content: ContentPart[]): Source[] {
   const sources: Source[] = [];
 
   for (const part of content) {
-    if (part.type !== "text") continue;
+    if (part.type === "text") {
+      const metadata = part.providerMetadata as
+        | OpenaiResponsesTextProviderMetadata
+        | undefined;
 
-    const metadata = part.providerMetadata as
-      | OpenaiResponsesTextProviderMetadata
-      | undefined;
-
-    for (const annotation of metadata?.openai?.annotations ?? []) {
-      if (annotation.type === "url_citation") {
-        sources.push({
-          kind: "url",
-          title: annotation.title ?? annotation.url,
-          url: annotation.url,
-        });
-      }
-      if (annotation.type === "file_citation") {
-        sources.push({
-          kind: "file",
-          filename: annotation.filename,
-        });
+      for (const annotation of metadata?.openai?.annotations ?? []) {
+        if (annotation.type === "url_citation") {
+          sources.push({
+            kind: "url",
+            title: annotation.title ?? annotation.url,
+            url: annotation.url,
+          });
+        }
+        if (annotation.type === "file_citation") {
+          sources.push({
+            kind: "file",
+            filename: annotation.filename,
+          });
+        }
       }
     }
   }
