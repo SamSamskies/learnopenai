@@ -65,7 +65,54 @@ describe("reduceTranscript", () => {
     expect(reduceTranscript(state, { type: "response.cancelled" })).toEqual({
       history: [
         { role: "user", text: "Question" },
-        { role: "assistant", text: "Partial answer" },
+        { role: "assistant", text: "Partial answer", interrupted: true },
+      ],
+      draftUser: "",
+      draftAssistant: "",
+    });
+  });
+
+  it("marks the last assistant turn interrupted on response.done cancelled", () => {
+    const state: TranscriptState = {
+      history: [
+        { role: "user", text: "Question" },
+        { role: "assistant", text: "Full answer" },
+      ],
+      draftUser: "",
+      draftAssistant: "",
+    };
+
+    expect(
+      reduceTranscript(state, {
+        type: "response.done",
+        response: { status: "cancelled" },
+      }),
+    ).toEqual({
+      history: [
+        { role: "user", text: "Question" },
+        { role: "assistant", text: "Full answer", interrupted: true },
+      ],
+      draftUser: "",
+      draftAssistant: "",
+    });
+  });
+
+  it("marks the last assistant turn interrupted when playback is cleared", () => {
+    const state: TranscriptState = {
+      history: [
+        { role: "user", text: "Question" },
+        { role: "assistant", text: "Full answer" },
+      ],
+      draftUser: "",
+      draftAssistant: "",
+    };
+
+    expect(
+      reduceTranscript(state, { type: "output_audio_buffer.cleared" }),
+    ).toEqual({
+      history: [
+        { role: "user", text: "Question" },
+        { role: "assistant", text: "Full answer", interrupted: true },
       ],
       draftUser: "",
       draftAssistant: "",

@@ -31,6 +31,30 @@ describe("reduceRealtimePhase", () => {
     );
   });
 
+  it("maps a cancelled response.done to interrupted", () => {
+    expect(
+      reduceRealtimePhase("speaking", {
+        type: "response.done",
+        response: { status: "cancelled" },
+      }),
+    ).toBe("interrupted");
+  });
+
+  it("maps output_audio_buffer.cleared to interrupted while speaking", () => {
+    expect(
+      reduceRealtimePhase("speaking", { type: "output_audio_buffer.cleared" }),
+    ).toBe("interrupted");
+  });
+
+  it("ignores response_cancel_not_active while speaking", () => {
+    expect(
+      reduceRealtimePhase("speaking", {
+        type: "error",
+        error: { code: "response_cancel_not_active" },
+      }),
+    ).toBe("interrupted");
+  });
+
   it("preserves the current phase for unknown events", () => {
     expect(reduceRealtimePhase("listening", { type: "unknown.event" })).toBe(
       "listening",

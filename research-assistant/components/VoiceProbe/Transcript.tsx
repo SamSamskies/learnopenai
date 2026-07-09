@@ -41,13 +41,26 @@ export function Transcript({
         {transcript.history.map((turn, index) => (
           <p
             key={index}
-            className={`whitespace-pre-wrap ${turn.role === "user" ? "ml-auto max-w-[85%] text-right" : "max-w-[90%]"}`}
+            className={
+              turn.role === "user"
+                ? "ml-auto max-w-[85%] text-right"
+                : "max-w-[90%]"
+            }
           >
             <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
               {turn.role}
             </span>
             <br />
-            {turn.text}
+            {turn.interrupted && (
+              <span className="mr-2 inline-flex rounded-lg border border-outline-variant bg-surface-container-low px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                Interrupted
+              </span>
+            )}
+            <span
+              className={`whitespace-pre-wrap ${turn.interrupted ? "text-foreground/60" : ""}`}
+            >
+              {turn.text}
+            </span>
           </p>
         ))}
 

@@ -42,13 +42,23 @@ export function VoiceProbe() {
   const [connected, setConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
   const micRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const liveRef = useRef(false);
 
+  function interrupt() {
+    const dc = dcRef.current;
+    if (dc?.readyState !== "open") return;
+    // Stop generation, then flush buffered playback (WebRTC-only).
+    dc.send(JSON.stringify({ type: "response.cancel" }));
+    dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
+  }
+
   function releaseMedia() {
     pcRef.current?.close();
     pcRef.current = null;
+    dcRef.current = null;
     micRef.current?.getTracks().forEach((t) => t.stop());
     micRef.current = null;
     if (audioRef.current) {
@@ -138,11 +148,14 @@ export function VoiceProbe() {
       pc.addTrack(mic.getTracks()[0]);
 
       const dc = pc.createDataChannel("oai-events");
+      dcRef.current = dc;
       dc.onmessage = (e) => {
         const event = JSON.parse(e.data) as {
           type: string;
           delta?: string;
           transcript?: string;
+          response?: { status?: string };
+          error?: { code?: string | null };
         };
         setPhase((p) => reduceRealtimePhase(p, event));
         setTranscript((t) => reduceTranscript(t, event));
@@ -219,13 +232,24 @@ export function VoiceProbe() {
                 : "Connect"}
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={disconnect}
-            className="rounded-lg border border-outline-variant bg-surface-container-low px-5 py-2.5 text-sm font-medium text-foreground hover:bg-surface-container"
-          >
-            Disconnect
-          </button>
+          <>
+            {phase === "speaking" && (
+              <button
+                type="button"
+                onClick={interrupt}
+                className="rounded-lg border border-outline-variant px-5 py-2.5 text-sm font-medium"
+              >
+                Interrupt
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={disconnect}
+              className="rounded-lg border border-outline-variant bg-surface-container-low px-5 py-2.5 text-sm font-medium text-foreground hover:bg-surface-container"
+            >
+              Disconnect
+            </button>
+          </>
         )}
       </div>
     </div>
