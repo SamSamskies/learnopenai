@@ -6,8 +6,20 @@ import {
   reduceRealtimePhase,
   type RealtimePhase,
 } from "./realtimePhase";
+import { Transcript } from "./Transcript";
+import {
+  emptyTranscript,
+  reduceTranscript,
+  type TranscriptState,
+} from "./transcriptReducer";
 
 export { reduceRealtimePhase, type RealtimePhase } from "./realtimePhase";
+export {
+  emptyTranscript,
+  reduceTranscript,
+  type TranscriptState,
+  type Turn,
+} from "./transcriptReducer";
 
 function mapConnectError(err: unknown): string {
   if (err instanceof DOMException) {
@@ -25,6 +37,8 @@ function mapConnectError(err: unknown): string {
 
 export function VoiceProbe() {
   const [phase, setPhase] = useState<RealtimePhase>("idle");
+  const [transcript, setTranscript] =
+    useState<TranscriptState>(emptyTranscript);
   const [connected, setConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -47,6 +61,7 @@ export function VoiceProbe() {
     liveRef.current = false;
     releaseMedia();
     setConnected(false);
+    setTranscript(emptyTranscript);
   }
 
   function handleConnectionDrop(message = "Connection lost") {
@@ -121,8 +136,13 @@ export function VoiceProbe() {
 
       const dc = pc.createDataChannel("oai-events");
       dc.onmessage = (e) => {
-        const event = JSON.parse(e.data) as { type: string };
+        const event = JSON.parse(e.data) as {
+          type: string;
+          delta?: string;
+          transcript?: string;
+        };
         setPhase((p) => reduceRealtimePhase(p, event));
+        setTranscript((t) => reduceTranscript(t, event));
       };
       attachConnectionHandlers(pc, dc);
 
@@ -175,6 +195,7 @@ export function VoiceProbe() {
       <div className="mt-10">
         <PhaseBadge phase={phase} connected={connected} />
       </div>
+      <Transcript transcript={transcript} />
 
       {errorMessage && (
         <p className="mt-4 max-w-md text-center text-sm text-error">{errorMessage}</p>

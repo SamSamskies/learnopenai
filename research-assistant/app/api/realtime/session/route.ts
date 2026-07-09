@@ -18,6 +18,10 @@ export async function POST() {
               prefix_padding_ms: 300,
               silence_duration_ms: 700,
             },
+            transcription: {
+              model: 'gpt-4o-mini-transcribe',
+              language: 'en',
+            },
           },
           output: { voice: 'marin' },
         },
