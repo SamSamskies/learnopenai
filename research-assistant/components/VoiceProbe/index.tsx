@@ -57,16 +57,15 @@ export function VoiceProbe() {
     }
   }
 
-  function resetSession() {
+  function releaseConnection() {
     liveRef.current = false;
     releaseMedia();
     setConnected(false);
-    setTranscript(emptyTranscript);
   }
 
   function handleConnectionDrop(message = "Connection lost") {
     if (!liveRef.current) return;
-    resetSession();
+    releaseConnection();
     setPhase("error");
     setErrorMessage(message);
   }
@@ -98,7 +97,11 @@ export function VoiceProbe() {
   );
 
   async function connect() {
+    const isReconnect = phase === "error";
     setErrorMessage(null);
+    if (!isReconnect) {
+      setTranscript(emptyTranscript);
+    }
     setPhase("connecting");
 
     try {
@@ -167,14 +170,14 @@ export function VoiceProbe() {
       setConnected(true);
       setPhase("idle");
     } catch (err) {
-      resetSession();
+      releaseConnection();
       setPhase("error");
       setErrorMessage(mapConnectError(err));
     }
   }
 
   function disconnect() {
-    resetSession();
+    releaseConnection();
     setPhase("idle");
     setErrorMessage(null);
   }
