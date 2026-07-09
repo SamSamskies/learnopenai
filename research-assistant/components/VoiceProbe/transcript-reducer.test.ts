@@ -3,7 +3,7 @@ import {
   emptyTranscript,
   reduceTranscript,
   type TranscriptState,
-} from "./transcriptReducer";
+} from "./transcript-reducer";
 
 describe("reduceTranscript", () => {
   it("builds and completes a user transcript", () => {

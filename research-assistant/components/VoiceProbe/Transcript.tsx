@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { TranscriptState } from "./transcriptReducer";
+import type { TranscriptState } from "./transcript-reducer";
 
 export function Transcript({
   transcript,

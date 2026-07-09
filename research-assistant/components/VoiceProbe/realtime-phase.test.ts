@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   reduceRealtimePhase,
   type RealtimePhase,
-} from "./realtimePhase";
+} from "./realtime-phase";
 
 describe("reduceRealtimePhase", () => {
   it.each([

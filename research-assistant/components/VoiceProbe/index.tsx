@@ -5,21 +5,21 @@ import { PhaseBadge } from "./PhaseBadge";
 import {
   reduceRealtimePhase,
   type RealtimePhase,
-} from "./realtimePhase";
+} from "./realtime-phase";
 import { Transcript } from "./Transcript";
 import {
   emptyTranscript,
   reduceTranscript,
   type TranscriptState,
-} from "./transcriptReducer";
+} from "./transcript-reducer";
 
-export { reduceRealtimePhase, type RealtimePhase } from "./realtimePhase";
+export { reduceRealtimePhase, type RealtimePhase } from "./realtime-phase";
 export {
   emptyTranscript,
   reduceTranscript,
   type TranscriptState,
   type Turn,
-} from "./transcriptReducer";
+} from "./transcript-reducer";
 
 function mapConnectError(err: unknown): string {
   if (err instanceof DOMException) {

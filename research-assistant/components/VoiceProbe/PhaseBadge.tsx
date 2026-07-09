@@ -1,5 +1,5 @@
 import { Spinner } from "../ResearchChat/icons";
-import type { RealtimePhase } from "./realtimePhase";
+import type { RealtimePhase } from "./realtime-phase";
 
 const PHASE_COPY: Record<RealtimePhase, string> = {
   idle: "Ready — tap Connect",
