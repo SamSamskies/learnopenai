@@ -19,6 +19,7 @@ import {
   reduceTranscript,
   type TranscriptState,
 } from "./transcript-reducer";
+import { turnDetectionLabel } from "@/lib/realtime-turn-detection";
 
 export { reduceRealtimePhase, type RealtimePhase } from "./realtime-phase";
 export {
@@ -342,6 +343,9 @@ export function VoiceProbe() {
             )}
           </p>
         )}
+        <p className="mt-2 text-center text-xs text-on-surface-variant">
+          {turnDetectionLabel()}
+        </p>
         <Transcript transcript={transcript} />
 
         {errorMessage && (

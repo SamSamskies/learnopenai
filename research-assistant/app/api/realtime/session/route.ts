@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
+import { REALTIME_TURN_DETECTION } from '@/lib/realtime-turn-detection';
 
 const openai = new OpenAI();
 
@@ -19,12 +20,7 @@ export async function POST() {
         audio: {
           input: {
             noise_reduction: { type: 'far_field' },
-            turn_detection: {
-              type: 'server_vad',
-              threshold: 0.75,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500,
-            },
+            turn_detection: REALTIME_TURN_DETECTION,
             transcription: {
               model: 'gpt-4o-mini-transcribe',
               language: 'en',
