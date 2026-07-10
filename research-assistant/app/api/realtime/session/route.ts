@@ -16,7 +16,7 @@ export async function POST() {
               type: 'server_vad',
               threshold: 0.75,
               prefix_padding_ms: 300,
-              silence_duration_ms: 700,
+              silence_duration_ms: 500,
             },
             transcription: {
               model: 'gpt-4o-mini-transcribe',
