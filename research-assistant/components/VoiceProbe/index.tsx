@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ModeChrome } from "../ModeChrome";
 import { PhaseBadge } from "./PhaseBadge";
 import {
   reduceRealtimePhase,
@@ -47,7 +48,9 @@ export function VoiceProbe() {
   const micRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const liveRef = useRef(false);
+  const connectGenRef = useRef(0);
   const speechStoppedAt = useRef<number | null>(null);
+  const connectRef = useRef<() => Promise<void>>(async () => {});
 
   function trackLatency(event: { type: string }) {
     if (event.type === "input_audio_buffer.speech_stopped") {
@@ -90,6 +93,22 @@ export function VoiceProbe() {
     setConnected(false);
   }
 
+  function discardAttempt(
+    pc: RTCPeerConnection | null,
+    mic: MediaStream | null,
+    audio: HTMLAudioElement | null,
+  ) {
+    if (pcRef.current === pc) {
+      pcRef.current = null;
+      dcRef.current = null;
+    }
+    if (micRef.current === mic) micRef.current = null;
+    if (audioRef.current === audio) audioRef.current = null;
+    pc?.close();
+    mic?.getTracks().forEach((t) => t.stop());
+    if (audio) audio.srcObject = null;
+  }
+
   function handleConnectionDrop(message = "Connection lost") {
     if (!liveRef.current) return;
     releaseConnection();
@@ -99,57 +118,70 @@ export function VoiceProbe() {
 
   function attachConnectionHandlers(pc: RTCPeerConnection, dc: RTCDataChannel) {
     pc.onconnectionstatechange = () => {
+      if (pcRef.current !== pc) return;
       const { connectionState } = pc;
       if (connectionState === "failed" || connectionState === "closed") {
         handleConnectionDrop();
       }
     };
     pc.oniceconnectionstatechange = () => {
+      if (pcRef.current !== pc) return;
       const { iceConnectionState } = pc;
       if (iceConnectionState === "failed" || iceConnectionState === "closed") {
         handleConnectionDrop();
       }
     };
-    dc.onclose = () => handleConnectionDrop();
+    dc.onclose = () => {
+      if (pcRef.current !== pc) return;
+      handleConnectionDrop();
+    };
   }
 
   useEffect(
     () => () => {
+      connectGenRef.current += 1;
       liveRef.current = false;
-      pcRef.current?.close();
-      micRef.current?.getTracks().forEach((track) => track.stop());
-      if (audioRef.current) audioRef.current.srcObject = null;
+      releaseMedia();
     },
     [],
   );
 
   async function connect() {
+    const gen = ++connectGenRef.current;
+    releaseMedia();
+    liveRef.current = false;
+
     const isReconnect = phase === "error";
     setErrorMessage(null);
     if (!isReconnect) {
       setTranscript(emptyTranscript);
     }
     setPhase("connecting");
+    setConnected(false);
+
+    let pc: RTCPeerConnection | null = null;
+    let mic: MediaStream | null = null;
+    let audio: HTMLAudioElement | null = null;
 
     try {
       const sessionRes = await fetch("/api/realtime/session", { method: "POST" });
+      if (gen !== connectGenRef.current) return;
       if (!sessionRes.ok) {
         throw new Error("Failed to mint session");
       }
       const token = await sessionRes.json();
+      if (gen !== connectGenRef.current) return;
       if (!token) throw new Error("No ephemeral token in session response");
 
-      const pc = new RTCPeerConnection();
-      pcRef.current = pc;
-
-      const audio = new Audio();
+      pc = new RTCPeerConnection();
+      audio = new Audio();
       audio.autoplay = true;
-      audioRef.current = audio;
       pc.ontrack = (e) => {
-        audio.srcObject = e.streams[0];
+        if (audio) audio.srcObject = e.streams[0];
       };
+      pcRef.current = pc;
+      audioRef.current = audio;
 
-      let mic: MediaStream;
       try {
         mic = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -161,12 +193,17 @@ export function VoiceProbe() {
       } catch (err) {
         throw new Error(mapConnectError(err));
       }
+      if (gen !== connectGenRef.current) {
+        discardAttempt(pc, mic, audio);
+        return;
+      }
       micRef.current = mic;
       pc.addTrack(mic.getTracks()[0]);
 
       const dc = pc.createDataChannel("oai-events");
       dcRef.current = dc;
       dc.onmessage = (e) => {
+        if (pcRef.current !== pc) return;
         const event = JSON.parse(e.data) as {
           type: string;
           delta?: string;
@@ -181,7 +218,15 @@ export function VoiceProbe() {
       attachConnectionHandlers(pc, dc);
 
       const offer = await pc.createOffer();
+      if (gen !== connectGenRef.current) {
+        discardAttempt(pc, mic, audio);
+        return;
+      }
       await pc.setLocalDescription(offer);
+      if (gen !== connectGenRef.current) {
+        discardAttempt(pc, mic, audio);
+        return;
+      }
 
       const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
         method: "POST",
@@ -191,23 +236,54 @@ export function VoiceProbe() {
         },
         body: offer.sdp,
       });
+      if (gen !== connectGenRef.current) {
+        discardAttempt(pc, mic, audio);
+        return;
+      }
       if (!sdpRes.ok) {
         throw new Error(`Realtime SDP exchange failed (${sdpRes.status})`);
       }
       const sdp = await sdpRes.text();
+      if (gen !== connectGenRef.current) {
+        discardAttempt(pc, mic, audio);
+        return;
+      }
       await pc.setRemoteDescription({ type: "answer", sdp });
+      if (gen !== connectGenRef.current) {
+        discardAttempt(pc, mic, audio);
+        return;
+      }
 
       liveRef.current = true;
       setConnected(true);
       setPhase("idle");
     } catch (err) {
+      if (gen !== connectGenRef.current) {
+        discardAttempt(pc, mic, audio);
+        return;
+      }
       releaseConnection();
       setPhase("error");
       setErrorMessage(mapConnectError(err));
     }
   }
 
+  connectRef.current = connect;
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("start") !== "1") {
+      return;
+    }
+    void connectRef.current().then(() => {
+      // Keep ?start=1 through Strict Mode remount; clear only once live.
+      if (liveRef.current) {
+        window.history.replaceState(null, "", "/voice");
+      }
+    });
+  }, []);
+
   function disconnect() {
+    connectGenRef.current += 1;
     speechStoppedAt.current = null;
     releaseConnection();
     setPhase("idle");
@@ -215,69 +291,70 @@ export function VoiceProbe() {
   }
 
   return (
-    <div className="flex min-h-full flex-1 flex-col items-center justify-center px-6 py-16">
-      <p className="mb-2 text-sm font-medium uppercase tracking-wide text-on-surface-variant">
-        Voice probe
-      </p>
-      <h1 className="font-serif text-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-        Realtime voice
-      </h1>
-      <p className="mt-3 max-w-md text-center text-base text-on-surface-variant">
-        Isolated WebRTC session — talk after connecting; phase updates from
-        realtime events.
-      </p>
-
-      <div className="mt-10">
-        <PhaseBadge phase={phase} connected={connected} />
-      </div>
-      {turnLatencyMs != null && (
-        <p className="mt-3 text-center text-sm text-on-surface-variant">
-          Last turn: {turnLatencyMs} ms
-          {turnLatencyMs > 800 && (
-            <span className="text-warn"> — over budget</span>
-          )}
+    <div className="flex h-dvh flex-col bg-background">
+      <ModeChrome />
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
+        <h1 className="font-serif text-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          Talk it through
+        </h1>
+        <p className="mt-3 max-w-md text-center text-base text-on-surface-variant">
+          Quick spoken answers. Switch to Research for briefs and sources.
         </p>
-      )}
-      <Transcript transcript={transcript} />
 
-      {errorMessage && (
-        <p className="mt-4 max-w-md text-center text-sm text-error">{errorMessage}</p>
-      )}
-
-      <div className="mt-8 flex items-center gap-3">
-        {!connected ? (
-          <button
-            type="button"
-            onClick={connect}
-            disabled={phase === "connecting"}
-            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-dark disabled:opacity-50"
-          >
-            {phase === "connecting"
-              ? "Connecting…"
-              : phase === "error"
-                ? "Reconnect"
-                : "Connect"}
-          </button>
-        ) : (
-          <>
-            {phase === "speaking" && (
-              <button
-                type="button"
-                onClick={interrupt}
-                className="rounded-lg border border-outline-variant px-5 py-2.5 text-sm font-medium"
-              >
-                Interrupt
-              </button>
+        <div className="mt-10">
+          <PhaseBadge phase={phase} connected={connected} />
+        </div>
+        {turnLatencyMs != null && (
+          <p className="mt-3 text-center text-sm text-on-surface-variant">
+            Last turn: {turnLatencyMs} ms
+            {turnLatencyMs > 800 && (
+              <span className="text-warn"> — over budget</span>
             )}
+          </p>
+        )}
+        <Transcript transcript={transcript} />
+
+        {errorMessage && (
+          <p className="mt-4 max-w-md text-center text-sm text-error">
+            {errorMessage}
+          </p>
+        )}
+
+        <div className="mt-8 flex items-center gap-3">
+          {!connected ? (
             <button
               type="button"
-              onClick={disconnect}
-              className="rounded-lg border border-outline-variant bg-surface-container-low px-5 py-2.5 text-sm font-medium text-foreground hover:bg-surface-container"
+              onClick={connect}
+              disabled={phase === "connecting"}
+              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-dark disabled:opacity-50"
             >
-              Disconnect
+              {phase === "connecting"
+                ? "Connecting…"
+                : phase === "error"
+                  ? "Reconnect"
+                  : "Connect"}
             </button>
-          </>
-        )}
+          ) : (
+            <>
+              {phase === "speaking" && (
+                <button
+                  type="button"
+                  onClick={interrupt}
+                  className="rounded-lg border border-outline-variant px-5 py-2.5 text-sm font-medium"
+                >
+                  Interrupt
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={disconnect}
+                className="rounded-lg border border-outline-variant bg-surface-container-low px-5 py-2.5 text-sm font-medium text-foreground hover:bg-surface-container"
+              >
+                Disconnect
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

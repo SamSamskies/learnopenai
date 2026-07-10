@@ -1,5 +1,13 @@
+import Link from "next/link";
 import type { ReactNode, RefObject } from "react";
-import { PaperclipIcon, SendIcon, SparkleIcon, Spinner, StopIcon } from "./icons";
+import {
+  MicIcon,
+  PaperclipIcon,
+  SendIcon,
+  SparkleIcon,
+  Spinner,
+  StopIcon,
+} from "./icons";
 
 function resizeTextarea(el: HTMLTextAreaElement) {
   el.style.height = "auto";
@@ -147,6 +155,26 @@ export function ChatComposer({
             >
               {refining ? <Spinner className="h-5 w-5" /> : <SparkleIcon />}
             </button>
+          </IconButtonTooltip>
+          <IconButtonTooltip label="Voice mode">
+            {busy || uploading ? (
+              <button
+                type="button"
+                disabled
+                aria-label="Voice mode"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <MicIcon />
+              </button>
+            ) : (
+              <Link
+                href="/voice?start=1"
+                aria-label="Voice mode"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-foreground"
+              >
+                <MicIcon />
+              </Link>
+            )}
           </IconButtonTooltip>
           <textarea
             ref={textareaRef}

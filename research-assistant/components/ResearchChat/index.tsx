@@ -3,6 +3,8 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ModeChrome } from "../ModeChrome";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { ChatComposer } from "./ChatComposer";
 import { ErrorBanner } from "./ErrorBanner";
 import { ChevronDownIcon, PlusIcon } from "./icons";
@@ -11,7 +13,6 @@ import {
   getUserText,
   type ResearchUIMessage,
 } from "@/lib/research-ui-message";
-import { ConfirmDialog } from "../ConfirmDialog";
 
 const SESSION_KEY = "researchSessionId";
 const NEAR_BOTTOM_THRESHOLD = 120;
@@ -330,11 +331,8 @@ export function ResearchChat() {
 
   return (
     <div className="flex h-dvh flex-col bg-background">
-      <header className="shrink-0 border-b border-outline-variant/60">
-        <div className="mx-auto flex max-w-[1120px] items-center justify-between px-6 py-4">
-          <span className="text-base font-semibold tracking-tight text-foreground">
-            Research Assistant
-          </span>
+      <ModeChrome
+        actions={
           <button
             type="button"
             onClick={() => {
@@ -350,8 +348,8 @@ export function ResearchChat() {
             <PlusIcon />
             New Chat
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <div className="relative flex-1 overflow-hidden">
         <div ref={scrollContainerRef} className="h-full overflow-y-auto">

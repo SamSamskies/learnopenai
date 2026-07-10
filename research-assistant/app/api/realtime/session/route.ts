@@ -9,6 +9,13 @@ export async function POST() {
       session: {
         type: 'realtime',
         model: 'gpt-realtime-2.1-mini',
+        instructions: [
+          'You are the voice mode of a research assistant.',
+          'Keep answers to 1–3 short spoken sentences.',
+          'If the user needs sources, lists, or a written brief,',
+          'say so and suggest switching to Research mode.',
+          'Never invent citations aloud.',
+        ].join(' '),
         audio: {
           input: {
             noise_reduction: { type: 'far_field' },
