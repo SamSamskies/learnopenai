@@ -317,7 +317,7 @@ export function VoiceProbe() {
           Talk it through
         </h1>
         <p className="mt-3 max-w-md text-center text-base text-on-surface-variant">
-          Quick spoken answers. Switch to Research for briefs and sources.
+          Quick spoken answers. Use Research for briefs and sources.
         </p>
 
         <div className="mt-10">
