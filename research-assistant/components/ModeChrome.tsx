@@ -10,10 +10,39 @@ function modeLinkClass(active: boolean) {
     : "text-on-surface-variant transition-colors hover:text-foreground";
 }
 
-export function ModeChrome({ actions }: { actions?: ReactNode }) {
+export function ModeChrome({
+  actions,
+  onRequestNavigate,
+}: {
+  actions?: ReactNode;
+  /** Intercept leaving the current mode (e.g. confirm before destructive switch). */
+  onRequestNavigate?: (href: string) => void;
+}) {
   const pathname = usePathname();
   const isResearch = pathname === "/";
   const isVoice = pathname.startsWith("/voice");
+
+  function renderModeLink(href: string, label: string, active: boolean) {
+    if (active) {
+      return <span className={modeLinkClass(true)}>{label}</span>;
+    }
+    if (onRequestNavigate) {
+      return (
+        <button
+          type="button"
+          onClick={() => onRequestNavigate(href)}
+          className={`${modeLinkClass(false)} bg-transparent p-0`}
+        >
+          {label}
+        </button>
+      );
+    }
+    return (
+      <Link href={href} className={modeLinkClass(false)}>
+        {label}
+      </Link>
+    );
+  }
 
   return (
     <header className="shrink-0 border-b border-outline-variant/60">
@@ -23,12 +52,8 @@ export function ModeChrome({ actions }: { actions?: ReactNode }) {
         </span>
         <div className="flex items-center gap-4">
           <nav className="flex items-center gap-4 text-sm">
-            <Link href="/" className={modeLinkClass(isResearch)}>
-              Research
-            </Link>
-            <Link href="/voice" className={modeLinkClass(isVoice)}>
-              Voice
-            </Link>
+            {renderModeLink("/", "Research", isResearch)}
+            {renderModeLink("/voice", "Voice", isVoice)}
           </nav>
           {actions}
         </div>

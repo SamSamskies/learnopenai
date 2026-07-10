@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { ModeChrome } from "../ModeChrome";
 import { PhaseBadge } from "./PhaseBadge";
 import {
@@ -37,12 +39,14 @@ function mapConnectError(err: unknown): string {
 }
 
 export function VoiceProbe() {
+  const router = useRouter();
   const [phase, setPhase] = useState<RealtimePhase>("idle");
   const [transcript, setTranscript] =
     useState<TranscriptState>(emptyTranscript);
   const [connected, setConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [turnLatencyMs, setTurnLatencyMs] = useState<number | null>(null);
+  const [pendingModeHref, setPendingModeHref] = useState<string | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const micRef = useRef<MediaStream | null>(null);
@@ -290,9 +294,24 @@ export function VoiceProbe() {
     setErrorMessage(null);
   }
 
+  const hasVoiceWork =
+    connected ||
+    phase === "connecting" ||
+    transcript.history.length > 0 ||
+    transcript.draftUser.trim().length > 0 ||
+    transcript.draftAssistant.trim().length > 0;
+
+  function requestModeNavigate(href: string) {
+    if (!hasVoiceWork) {
+      router.push(href);
+      return;
+    }
+    setPendingModeHref(href);
+  }
+
   return (
     <div className="flex h-dvh flex-col bg-background">
-      <ModeChrome />
+      <ModeChrome onRequestNavigate={requestModeNavigate} />
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
         <h1 className="font-serif text-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           Talk it through
@@ -356,6 +375,20 @@ export function VoiceProbe() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingModeHref != null}
+        title="Switch to Research?"
+        description="This ends your voice session and clears the transcript."
+        confirmLabel="Switch to Research"
+        destructive
+        onConfirm={() => {
+          const href = pendingModeHref;
+          setPendingModeHref(null);
+          if (href) router.push(href);
+        }}
+        onCancel={() => setPendingModeHref(null)}
+      />
     </div>
   );
 }

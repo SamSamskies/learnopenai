@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModeChrome } from "../ModeChrome";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -72,6 +73,7 @@ function EmptyState() {
 }
 
 export function ResearchChat() {
+  const router = useRouter();
   const [sessionId, setSessionId] = useState(() => {
     if (typeof window !== "undefined") {
       const stored = sessionStorage.getItem(SESSION_KEY);
@@ -166,6 +168,23 @@ export function ResearchChat() {
   }
 
   const [confirmNewChat, setConfirmNewChat] = useState(false);
+  const [pendingModeHref, setPendingModeHref] = useState<string | null>(null);
+
+  const hasResearchWork =
+    !isEmpty ||
+    uploadedFiles.length > 0 ||
+    input.trim().length > 0 ||
+    busy ||
+    uploading ||
+    refining;
+
+  function requestModeNavigate(href: string) {
+    if (!hasResearchWork) {
+      router.push(href);
+      return;
+    }
+    setPendingModeHref(href);
+  }
 
   async function newChat() {
     stop();
@@ -332,6 +351,7 @@ export function ResearchChat() {
   return (
     <div className="flex h-dvh flex-col bg-background">
       <ModeChrome
+        onRequestNavigate={requestModeNavigate}
         actions={
           <button
             type="button"
@@ -413,6 +433,7 @@ export function ResearchChat() {
         onUndoRefine={undoRefine}
         canSend={canSend}
         onStop={() => stop()}
+        onVoiceMode={() => requestModeNavigate("/voice?start=1")}
       />
 
       <ConfirmDialog
@@ -426,6 +447,20 @@ export function ResearchChat() {
           void newChat();
         }}
         onCancel={() => setConfirmNewChat(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingModeHref != null}
+        title="Switch to Voice?"
+        description="This leaves your research conversation. Chat history on this screen will be cleared."
+        confirmLabel="Switch to Voice"
+        destructive
+        onConfirm={() => {
+          const href = pendingModeHref;
+          setPendingModeHref(null);
+          if (href) router.push(href);
+        }}
+        onCancel={() => setPendingModeHref(null)}
       />
     </div>
   );
