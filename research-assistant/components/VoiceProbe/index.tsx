@@ -41,11 +41,28 @@ export function VoiceProbe() {
     useState<TranscriptState>(emptyTranscript);
   const [connected, setConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [turnLatencyMs, setTurnLatencyMs] = useState<number | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const micRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const liveRef = useRef(false);
+  const speechStoppedAt = useRef<number | null>(null);
+
+  function trackLatency(event: { type: string }) {
+    if (event.type === "input_audio_buffer.speech_stopped") {
+      speechStoppedAt.current = performance.now();
+      return;
+    }
+    const isFirstAudio =
+      event.type === "response.output_audio.delta" ||
+      event.type === "response.audio.delta" ||
+      event.type === "output_audio_buffer.started";
+    if (isFirstAudio && speechStoppedAt.current != null) {
+      setTurnLatencyMs(Math.round(performance.now() - speechStoppedAt.current));
+      speechStoppedAt.current = null;
+    }
+  }
 
   function interrupt() {
     const dc = dcRef.current;
@@ -157,6 +174,7 @@ export function VoiceProbe() {
           response?: { status?: string };
           error?: { code?: string | null };
         };
+        trackLatency(event);
         setPhase((p) => reduceRealtimePhase(p, event));
         setTranscript((t) => reduceTranscript(t, event));
       };
@@ -190,6 +208,7 @@ export function VoiceProbe() {
   }
 
   function disconnect() {
+    speechStoppedAt.current = null;
     releaseConnection();
     setPhase("idle");
     setErrorMessage(null);
@@ -211,6 +230,14 @@ export function VoiceProbe() {
       <div className="mt-10">
         <PhaseBadge phase={phase} connected={connected} />
       </div>
+      {turnLatencyMs != null && (
+        <p className="mt-3 text-center text-sm text-on-surface-variant">
+          Last turn: {turnLatencyMs} ms
+          {turnLatencyMs > 800 && (
+            <span className="text-warn"> — over budget</span>
+          )}
+        </p>
+      )}
       <Transcript transcript={transcript} />
 
       {errorMessage && (
