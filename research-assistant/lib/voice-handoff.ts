@@ -14,8 +14,8 @@ type VoiceHandoffSource = {
 export function formatVoiceHandoff(
   source: VoiceHandoffSource,
 ): string | null {
-  const pendingUser = source.draftUser.trim()
-    ? [{ role: "user" as const, text: source.draftUser }]
+  const pendingUser: VoiceTurn[] = source.draftUser.trim()
+    ? [{ role: "user", text: source.draftUser }]
     : [];
   const turns = [...source.history, ...pendingUser].slice(-6);
   if (turns.length === 0) return null;
