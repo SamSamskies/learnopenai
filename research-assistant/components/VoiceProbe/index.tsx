@@ -11,6 +11,10 @@ import {
 } from "./realtime-phase";
 import { Transcript } from "./Transcript";
 import {
+  formatVoiceHandoff,
+  saveVoiceHandoff,
+} from "@/lib/voice-handoff";
+import {
   emptyTranscript,
   reduceTranscript,
   type TranscriptState,
@@ -294,6 +298,13 @@ export function VoiceProbe() {
     setErrorMessage(null);
   }
 
+  function continueInResearch() {
+    const draft = formatVoiceHandoff(transcript);
+    if (draft) saveVoiceHandoff(draft);
+    disconnect();
+    router.push("/");
+  }
+
   const hasVoiceWork =
     connected ||
     phase === "connecting" ||
@@ -339,7 +350,16 @@ export function VoiceProbe() {
           </p>
         )}
 
-        <div className="mt-8 flex items-center gap-3">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          {formatVoiceHandoff(transcript) && (
+            <button
+              type="button"
+              onClick={continueInResearch}
+              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-dark"
+            >
+              Continue in Research
+            </button>
+          )}
           {!connected ? (
             <button
               type="button"
@@ -379,12 +399,17 @@ export function VoiceProbe() {
       <ConfirmDialog
         open={pendingModeHref != null}
         title="Switch to Research?"
-        description="This ends your voice session and clears the transcript."
+        description={
+          formatVoiceHandoff(transcript)
+            ? "This ends your voice session. Use Continue in Research first if you want the conversation copied over."
+            : "This ends your voice session."
+        }
         confirmLabel="Switch to Research"
         destructive
         onConfirm={() => {
           const href = pendingModeHref;
           setPendingModeHref(null);
+          disconnect();
           if (href) router.push(href);
         }}
         onCancel={() => setPendingModeHref(null)}

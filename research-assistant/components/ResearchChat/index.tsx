@@ -14,6 +14,7 @@ import {
   getUserText,
   type ResearchUIMessage,
 } from "@/lib/research-ui-message";
+import { takeVoiceHandoff } from "@/lib/voice-handoff";
 
 const SESSION_KEY = "researchSessionId";
 const NEAR_BOTTOM_THRESHOLD = 120;
@@ -227,6 +228,24 @@ export function ResearchChat() {
       block: "end",
     });
   }
+
+  useEffect(() => {
+    const draft = takeVoiceHandoff();
+    if (!draft) return;
+
+    setInput(draft);
+    setRefined(false);
+    draftBeforeRefineRef.current = null;
+
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+        el.focus();
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
