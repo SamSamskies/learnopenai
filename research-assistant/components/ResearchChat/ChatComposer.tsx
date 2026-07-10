@@ -2,6 +2,7 @@ import type { ReactNode, RefObject } from "react";
 import {
   MicIcon,
   PaperclipIcon,
+  PlusIcon,
   SendIcon,
   SparkleIcon,
   Spinner,
@@ -52,6 +53,8 @@ export function ChatComposer({
   canSend,
   onStop,
   onVoiceMode,
+  onNewChat,
+  newChatDisabled,
 }: {
   input: string;
   onInputChange: (value: string) => void;
@@ -71,6 +74,8 @@ export function ChatComposer({
   canSend: boolean;
   onStop: () => void;
   onVoiceMode: () => void;
+  onNewChat: () => void;
+  newChatDisabled: boolean;
 }) {
   const refineTooShort =
     input.trim().length < 8 && !busy && !uploading && !refining;
@@ -118,6 +123,18 @@ export function ChatComposer({
             </button>
           </div>
         )}
+
+        <div className="mb-2">
+          <button
+            type="button"
+            onClick={onNewChat}
+            disabled={newChatDisabled}
+            className="inline-flex items-center gap-1.5 text-sm text-on-surface-variant transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <PlusIcon />
+            New chat
+          </button>
+        </div>
 
         <form
           onSubmit={onSubmit}

@@ -8,7 +8,7 @@ import { ModeChrome } from "../ModeChrome";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ChatComposer } from "./ChatComposer";
 import { ErrorBanner } from "./ErrorBanner";
-import { ChevronDownIcon, PlusIcon } from "./icons";
+import { ChevronDownIcon } from "./icons";
 import { ResearchTurn } from "./ResearchTurn";
 import {
   getUserText,
@@ -354,6 +354,14 @@ export function ResearchChat() {
     }
   }
 
+  function requestNewChat() {
+    if (isEmpty && uploadedFiles.length === 0) {
+      void newChat();
+      return;
+    }
+    setConfirmNewChat(true);
+  }
+
   function retryTransportError() {
     const last = turns.at(-1);
     if (!last) return;
@@ -369,26 +377,7 @@ export function ResearchChat() {
 
   return (
     <div className="flex h-dvh flex-col bg-background">
-      <ModeChrome
-        onRequestNavigate={requestModeNavigate}
-        actions={
-          <button
-            type="button"
-            onClick={() => {
-              if (isEmpty && uploadedFiles.length === 0) {
-                void newChat();
-                return;
-              }
-              setConfirmNewChat(true);
-            }}
-            disabled={busy || uploading || nothingToReset}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <PlusIcon />
-            New Chat
-          </button>
-        }
-      />
+      <ModeChrome onRequestNavigate={requestModeNavigate} />
 
       <div className="relative flex-1 overflow-hidden">
         <div ref={scrollContainerRef} className="h-full overflow-y-auto">
@@ -453,6 +442,8 @@ export function ResearchChat() {
         canSend={canSend}
         onStop={() => stop()}
         onVoiceMode={() => requestModeNavigate("/voice?start=1")}
+        onNewChat={requestNewChat}
+        newChatDisabled={busy || uploading || nothingToReset}
       />
 
       <ConfirmDialog
