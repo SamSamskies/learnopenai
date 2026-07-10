@@ -52,6 +52,7 @@ export function VoiceProbe() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [turnLatencyMs, setTurnLatencyMs] = useState<number | null>(null);
   const [pendingModeHref, setPendingModeHref] = useState<string | null>(null);
+  const [confirmContinueResearch, setConfirmContinueResearch] = useState(false);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const micRef = useRef<MediaStream | null>(null);
@@ -358,7 +359,7 @@ export function VoiceProbe() {
           {formatVoiceHandoff(transcript) && (
             <button
               type="button"
-              onClick={continueInResearch}
+              onClick={() => setConfirmContinueResearch(true)}
               className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-dark"
             >
               Continue in Research
@@ -399,6 +400,18 @@ export function VoiceProbe() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmContinueResearch}
+        title="Continue in Research?"
+        description="Your voice session will end and this conversation will be copied into Research as a starting prompt."
+        confirmLabel="Continue in Research"
+        onConfirm={() => {
+          setConfirmContinueResearch(false);
+          continueInResearch();
+        }}
+        onCancel={() => setConfirmContinueResearch(false)}
+      />
 
       <ConfirmDialog
         open={pendingModeHref != null}
