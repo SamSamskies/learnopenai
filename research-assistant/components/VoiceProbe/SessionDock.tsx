@@ -47,23 +47,27 @@ function PhaseIndicator({ phase }: { phase: RealtimePhase }) {
 
 export function SessionDock({
   phase,
+  toolLabel,
   turnLatencyMs,
   turnDetection,
   onInterrupt,
   onDisconnect,
 }: {
   phase: RealtimePhase;
+  toolLabel?: string | null;
   turnLatencyMs: number | null;
   turnDetection: string;
   onInterrupt: () => void;
   onDisconnect: () => void;
 }) {
+  const statusLabel = toolLabel ?? PHASE_COPY[phase];
   const showIndicator =
     phase === "connecting" ||
     phase === "listening" ||
     phase === "thinking" ||
     phase === "speaking" ||
-    phase === "error";
+    phase === "error" ||
+    toolLabel != null;
 
   return (
     <div className="fixed inset-x-4 bottom-4 z-10 sm:inset-x-auto sm:right-6 sm:w-72">
@@ -73,8 +77,10 @@ export function SessionDock({
           role="status"
           aria-live="polite"
         >
-          {showIndicator && <PhaseIndicator phase={phase} />}
-          <span className="truncate">{PHASE_COPY[phase]}</span>
+          {showIndicator && (
+            <PhaseIndicator phase={toolLabel != null ? "thinking" : phase} />
+          )}
+          <span className="truncate">{statusLabel}</span>
         </div>
         {phase === "idle" && (
           <p className="mt-1 text-xs text-on-surface-variant">

@@ -27,6 +27,11 @@ import {
   prepareImageFile,
   type PreparedImage,
 } from "./realtime-image-attach";
+import {
+  extractFunctionCall,
+  functionOutputEvent,
+  type RealtimeFunctionCall,
+} from "@/lib/realtime-voice-tools";
 
 export { reduceRealtimePhase, type RealtimePhase } from "./realtime-phase";
 export {
@@ -61,6 +66,7 @@ export function VoiceProbe() {
   const [pendingModeHref, setPendingModeHref] = useState<string | null>(null);
   const [confirmContinueResearch, setConfirmContinueResearch] = useState(false);
   const [attachedImage, setAttachedImage] = useState<PreparedImage | null>(null);
+  const [toolLabel, setToolLabel] = useState<string | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -70,6 +76,27 @@ export function VoiceProbe() {
   const connectGenRef = useRef(0);
   const speechStoppedAt = useRef<number | null>(null);
   const connectRef = useRef<() => Promise<void>>(async () => {});
+  const handledCalls = useRef(new Set<string>());
+
+  async function runVoiceTool(call: RealtimeFunctionCall) {
+    if (call.name !== "lookup_definition") return;
+    const term = String(call.args.term ?? "").trim();
+    setToolLabel(term ? `Looking up “${term}”…` : "Looking up…");
+    try {
+      const res = await fetch("/api/voice/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ term }),
+      });
+      const data = await res.json();
+      const dc = dcRef.current;
+      if (dc?.readyState !== "open") return;
+      dc.send(JSON.stringify(functionOutputEvent(call.callId, data)));
+      dc.send(JSON.stringify({ type: "response.create" }));
+    } finally {
+      setToolLabel(null);
+    }
+  }
 
   function trackLatency(event: { type: string }) {
     if (event.type === "input_audio_buffer.speech_stopped") {
@@ -247,12 +274,25 @@ export function VoiceProbe() {
           type: string;
           delta?: string;
           transcript?: string;
-          response?: { status?: string };
+          response?: {
+            status?: string;
+            output?: Array<{
+              type?: string;
+              name?: string;
+              call_id?: string;
+              arguments?: string;
+            }>;
+          };
           error?: { code?: string | null };
         };
         trackLatency(event);
         setPhase((p) => reduceRealtimePhase(p, event));
         setTranscript((t) => reduceTranscript(t, event));
+        const call = extractFunctionCall(event);
+        if (call && !handledCalls.current.has(call.callId)) {
+          handledCalls.current.add(call.callId);
+          void runVoiceTool(call);
+        }
       };
       attachConnectionHandlers(pc, dc);
 
@@ -324,6 +364,8 @@ export function VoiceProbe() {
   function disconnect() {
     connectGenRef.current += 1;
     speechStoppedAt.current = null;
+    handledCalls.current.clear();
+    setToolLabel(null);
     releaseConnection();
     setAttachedImage(null);
     setPhase("idle");
@@ -458,6 +500,7 @@ export function VoiceProbe() {
       {sessionActive && (
         <SessionDock
           phase={phase}
+          toolLabel={toolLabel}
           turnLatencyMs={turnLatencyMs}
           turnDetection={turnDetectionLabel()}
           onInterrupt={interrupt}
