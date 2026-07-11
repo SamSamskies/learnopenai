@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ModeChrome } from "../ModeChrome";
-import { PhaseBadge } from "./PhaseBadge";
+import { ImageAttachStrip } from "./ImageAttachStrip";
+import { SessionDock } from "./SessionDock";
 import {
   reduceRealtimePhase,
   type RealtimePhase,
@@ -351,47 +352,40 @@ export function VoiceProbe() {
   }
 
   const handoffDraft = formatVoiceHandoff(transcript);
+  const sessionActive = connected || phase === "connecting";
+  const hasTranscript =
+    transcript.history.length > 0 ||
+    transcript.draftUser ||
+    transcript.draftAssistant;
 
   return (
     <div className="flex h-dvh flex-col bg-background">
       <ModeChrome onRequestNavigate={requestModeNavigate} />
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-        <h1 className="font-serif text-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+      <div
+        className={`relative flex flex-1 flex-col items-center px-6 ${
+          sessionActive
+            ? "justify-start overflow-y-auto pt-8 pb-56"
+            : "justify-center py-16"
+        }`}
+      >
+        <h1
+          className={`font-serif text-center font-semibold tracking-tight text-foreground ${
+            sessionActive ? "text-xl sm:text-2xl" : "text-3xl sm:text-4xl"
+          }`}
+        >
           Talk it through
         </h1>
-        <p className="mt-3 max-w-md text-center text-base text-on-surface-variant">
-          Quick spoken answers. Use Research for briefs and sources.
-        </p>
-
-        <div className="mt-10">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleImagePick}
-          />
-          <PhaseBadge
-            phase={phase}
-            connected={connected}
-            attachedImage={attachedImage}
-            onAttachImage={() => fileInputRef.current?.click()}
-            onInterrupt={interrupt}
-          />
-        </div>
-        {turnLatencyMs != null && (
-          <p className="mt-3 text-center text-sm text-on-surface-variant">
-            Last turn: {turnLatencyMs} ms
-            {turnLatencyMs > 800 && (
-              <span className="text-warn"> — over budget</span>
-            )}
+        {!sessionActive && (
+          <p className="mt-3 max-w-md text-center text-base text-on-surface-variant">
+            Quick spoken answers. Use Research for briefs and sources.
           </p>
         )}
-        <p className="mt-2 text-center text-xs text-on-surface-variant">
-          {turnDetectionLabel()}
-        </p>
         {handoffDraft && (
-          <div className="mt-6 flex w-full max-w-xl flex-col items-stretch gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            className={`flex w-full max-w-xl flex-col items-stretch gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
+              sessionActive ? "mt-6" : "mt-10"
+            }`}
+          >
             <p className="text-sm text-on-surface-variant">
               Ready for sources and a written brief?
             </p>
@@ -404,39 +398,64 @@ export function VoiceProbe() {
             </button>
           </div>
         )}
-        <Transcript transcript={transcript} />
+        {(sessionActive || hasTranscript) && (
+          <div
+            className={`w-full max-w-xl space-y-3 ${
+              sessionActive ? "mt-6" : handoffDraft ? "mt-6" : "mt-10"
+            }`}
+          >
+            {sessionActive && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImagePick}
+                />
+                <ImageAttachStrip
+                  attachedImage={attachedImage}
+                  connected={connected}
+                  onAttachImage={() => fileInputRef.current?.click()}
+                />
+              </>
+            )}
+            <Transcript transcript={transcript} className="mt-0" />
+          </div>
+        )}
 
         {errorMessage && (
-          <p className="mt-4 max-w-md text-center text-sm text-error">
+          <p
+            className={`max-w-md text-center text-sm text-error ${
+              sessionActive ? "mt-4" : "mt-8"
+            }`}
+          >
             {errorMessage}
           </p>
         )}
 
-        <div className="mt-8 flex flex-col items-center gap-2">
-          {!connected ? (
+        {!sessionActive && (
+          <div className="mt-8 flex flex-col items-center gap-2">
             <button
               type="button"
               onClick={connect}
-              disabled={phase === "connecting"}
-              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-dark disabled:opacity-50"
+              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-dark"
             >
-              {phase === "connecting"
-                ? "Connecting…"
-                : phase === "error"
-                  ? "Reconnect"
-                  : "Connect"}
+              {phase === "error" ? "Reconnect" : "Connect"}
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={disconnect}
-              className="text-sm text-on-surface-variant underline-offset-4 transition-colors hover:text-foreground hover:underline"
-            >
-              Disconnect
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+
+      {sessionActive && (
+        <SessionDock
+          phase={phase}
+          turnLatencyMs={turnLatencyMs}
+          turnDetection={turnDetectionLabel()}
+          onInterrupt={interrupt}
+          onDisconnect={disconnect}
+        />
+      )}
 
       <ConfirmDialog
         open={confirmContinueResearch}

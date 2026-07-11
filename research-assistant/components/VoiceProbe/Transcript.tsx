@@ -5,8 +5,10 @@ import type { TranscriptState } from "./transcript-reducer";
 
 export function Transcript({
   transcript,
+  className = "mt-6",
 }: {
   transcript: TranscriptState;
+  className?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [followingLatest, setFollowingLatest] = useState(true);
@@ -25,7 +27,7 @@ export function Transcript({
   if (!hasTranscript) return null;
 
   return (
-    <div className="relative mt-6 w-full max-w-xl">
+    <div className={`relative w-full max-w-xl ${className}`}>
       <div
         ref={scrollRef}
         className="max-h-[40dvh] space-y-5 overflow-y-auto overscroll-contain rounded-xl border border-outline-variant bg-surface-container-low/40 px-4 py-4 text-base leading-relaxed text-foreground sm:px-5"
