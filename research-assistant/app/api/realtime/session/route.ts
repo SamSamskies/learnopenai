@@ -16,6 +16,8 @@ export async function POST() {
           'If the user needs sources, lists, or a written brief,',
           'say so and suggest switching to Research mode.',
           'Never invent citations aloud.',
+          'When the user attaches an image, describe what you see briefly in spoken form.',
+          'Do not invent precise numbers from charts unless clearly legible.',
         ].join(' '),
         audio: {
           input: {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ModeChrome } from "../ModeChrome";
 import { PhaseBadge } from "./PhaseBadge";
@@ -20,6 +20,11 @@ import {
   type TranscriptState,
 } from "./transcript-reducer";
 import { turnDetectionLabel } from "@/lib/realtime-turn-detection";
+import {
+  imageAttachEvent,
+  prepareImageFile,
+  type PreparedImage,
+} from "./realtime-image-attach";
 
 export { reduceRealtimePhase, type RealtimePhase } from "./realtime-phase";
 export {
@@ -53,7 +58,9 @@ export function VoiceProbe() {
   const [turnLatencyMs, setTurnLatencyMs] = useState<number | null>(null);
   const [pendingModeHref, setPendingModeHref] = useState<string | null>(null);
   const [confirmContinueResearch, setConfirmContinueResearch] = useState(false);
+  const [attachedImage, setAttachedImage] = useState<PreparedImage | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const micRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -83,6 +90,26 @@ export function VoiceProbe() {
     // Stop generation, then flush buffered playback (WebRTC-only).
     dc.send(JSON.stringify({ type: "response.cancel" }));
     dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
+  }
+
+  async function attachImage(file: File) {
+    const prepared = await prepareImageFile(file);
+    const dc = dcRef.current;
+    if (dc?.readyState !== "open") throw new Error("Connect first");
+    dc.send(JSON.stringify(imageAttachEvent(prepared.dataUrl)));
+    setAttachedImage(prepared);
+  }
+
+  async function handleImagePick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      setErrorMessage(null);
+      await attachImage(file);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not attach image");
+    }
   }
 
   function releaseMedia() {
@@ -296,6 +323,7 @@ export function VoiceProbe() {
     connectGenRef.current += 1;
     speechStoppedAt.current = null;
     releaseConnection();
+    setAttachedImage(null);
     setPhase("idle");
     setErrorMessage(null);
   }
@@ -336,6 +364,22 @@ export function VoiceProbe() {
         <div className="mt-10">
           <PhaseBadge phase={phase} connected={connected} />
         </div>
+        {attachedImage && (
+          <div className="mt-4 flex flex-col items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={attachedImage.previewUrl}
+              alt=""
+              className="h-16 w-16 rounded-lg border border-outline-variant object-cover"
+            />
+            <p className="max-w-xs text-center text-sm text-on-surface-variant">
+              Attached — ask about this aloud.
+              <span className="mt-0.5 block truncate text-xs opacity-80">
+                {attachedImage.label}
+              </span>
+            </p>
+          </div>
+        )}
         {turnLatencyMs != null && (
           <p className="mt-3 text-center text-sm text-on-surface-variant">
             Last turn: {turnLatencyMs} ms
@@ -355,6 +399,13 @@ export function VoiceProbe() {
           </p>
         )}
 
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImagePick}
+        />
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           {formatVoiceHandoff(transcript) && (
             <button
@@ -398,6 +449,14 @@ export function VoiceProbe() {
               </button>
             </>
           )}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!connected}
+            className="rounded-lg border border-outline-variant px-5 py-2.5 text-sm font-medium hover:bg-surface-container-low disabled:opacity-50"
+          >
+            Attach image
+          </button>
         </div>
       </div>
 
