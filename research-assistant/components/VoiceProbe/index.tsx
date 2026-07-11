@@ -19,6 +19,7 @@ import {
 import {
   emptyTranscript,
   reduceTranscript,
+  appendSystemTurn,
   type TranscriptState,
 } from "./transcript-reducer";
 import { turnDetectionLabel } from "@/lib/realtime-turn-detection";
@@ -30,7 +31,11 @@ import {
 import {
   extractFunctionCall,
   functionOutputEvent,
+  LOOKUP_DEFINITION_TOOL,
+  lookupDefinitionLabel,
+  lookedUpSystemLine,
   type RealtimeFunctionCall,
+  type RealtimeVoiceEvent,
 } from "@/lib/realtime-voice-tools";
 
 export { reduceRealtimePhase, type RealtimePhase } from "./realtime-phase";
@@ -77,11 +82,46 @@ export function VoiceProbe() {
   const speechStoppedAt = useRef<number | null>(null);
   const connectRef = useRef<() => Promise<void>>(async () => {});
   const handledCalls = useRef(new Set<string>());
+  const lookupInFlight = useRef(false);
+
+  function clearLookupLabel() {
+    lookupInFlight.current = false;
+    setToolLabel(null);
+  }
+
+  function beginLookupLabel(term: string) {
+    lookupInFlight.current = true;
+    setToolLabel(lookupDefinitionLabel(term));
+  }
+
+  function maybeClearLookupLabel(event: { type: string }) {
+    if (!lookupInFlight.current) return;
+
+    const followUpStarted =
+      event.type === "response.output_audio.delta" ||
+      event.type === "response.audio.delta" ||
+      event.type === "output_audio_buffer.started" ||
+      event.type === "response.output_audio_transcript.delta" ||
+      event.type === "response.audio_transcript.delta";
+
+    if (followUpStarted) {
+      clearLookupLabel();
+      return;
+    }
+
+    if (
+      event.type === "output_audio_buffer.stopped" ||
+      event.type === "response.cancelled" ||
+      event.type === "input_audio_buffer.speech_started"
+    ) {
+      clearLookupLabel();
+    }
+  }
 
   async function runVoiceTool(call: RealtimeFunctionCall) {
-    if (call.name !== "lookup_definition") return;
+    if (call.name !== LOOKUP_DEFINITION_TOOL.name) return;
     const term = String(call.args.term ?? "").trim();
-    setToolLabel(term ? `Looking up “${term}”…` : "Looking up…");
+    beginLookupLabel(term);
     try {
       const res = await fetch("/api/voice/lookup", {
         method: "POST",
@@ -91,10 +131,13 @@ export function VoiceProbe() {
       const data = await res.json();
       const dc = dcRef.current;
       if (dc?.readyState !== "open") return;
+      setTranscript((t) =>
+        appendSystemTurn(t, lookedUpSystemLine(term)),
+      );
       dc.send(JSON.stringify(functionOutputEvent(call.callId, data)));
       dc.send(JSON.stringify({ type: "response.create" }));
-    } finally {
-      setToolLabel(null);
+    } catch {
+      clearLookupLabel();
     }
   }
 
@@ -270,22 +313,14 @@ export function VoiceProbe() {
       dcRef.current = dc;
       dc.onmessage = (e) => {
         if (pcRef.current !== pc) return;
-        const event = JSON.parse(e.data) as {
-          type: string;
+        const event = JSON.parse(e.data) as RealtimeVoiceEvent & {
           delta?: string;
           transcript?: string;
-          response?: {
-            status?: string;
-            output?: Array<{
-              type?: string;
-              name?: string;
-              call_id?: string;
-              arguments?: string;
-            }>;
-          };
+          response?: RealtimeVoiceEvent["response"] & { status?: string };
           error?: { code?: string | null };
         };
         trackLatency(event);
+        maybeClearLookupLabel(event);
         setPhase((p) => reduceRealtimePhase(p, event));
         setTranscript((t) => reduceTranscript(t, event));
         const call = extractFunctionCall(event);
@@ -365,7 +400,7 @@ export function VoiceProbe() {
     connectGenRef.current += 1;
     speechStoppedAt.current = null;
     handledCalls.current.clear();
-    setToolLabel(null);
+    clearLookupLabel();
     releaseConnection();
     setAttachedImage(null);
     setPhase("idle");

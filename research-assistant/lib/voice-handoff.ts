@@ -17,7 +17,9 @@ export function formatVoiceHandoff(
   const pendingUser: VoiceTurn[] = source.draftUser.trim()
     ? [{ role: "user", text: source.draftUser }]
     : [];
-  const turns = [...source.history, ...pendingUser].slice(-6);
+  const turns = [...source.history, ...pendingUser]
+    .filter((turn) => turn.role !== "system")
+    .slice(-6);
   if (turns.length === 0) return null;
 
   const transcript = turns.map((turn) => {

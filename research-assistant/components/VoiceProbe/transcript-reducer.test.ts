@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   emptyTranscript,
   reduceTranscript,
+  appendSystemTurn,
   type TranscriptState,
 } from "./transcript-reducer";
 
@@ -114,6 +115,14 @@ describe("reduceTranscript", () => {
         { role: "user", text: "Question" },
         { role: "assistant", text: "Full answer", interrupted: true },
       ],
+      draftUser: "",
+      draftAssistant: "",
+    });
+  });
+
+  it("appends a system turn", () => {
+    expect(appendSystemTurn(emptyTranscript, "Looked up: RAG")).toEqual({
+      history: [{ role: "system", text: "Looked up: RAG" }],
       draftUser: "",
       draftAssistant: "",
     });

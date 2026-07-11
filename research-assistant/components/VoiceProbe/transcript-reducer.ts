@@ -1,8 +1,19 @@
 export type Turn = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   text: string;
   interrupted?: boolean;
 };
+
+export function appendSystemTurn(
+  state: TranscriptState,
+  text: string,
+): TranscriptState {
+  if (!text.trim()) return state;
+  return {
+    ...state,
+    history: [...state.history, { role: "system", text }],
+  };
+}
 
 export type TranscriptState = {
   history: Turn[];

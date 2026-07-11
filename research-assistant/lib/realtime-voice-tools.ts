@@ -1,3 +1,13 @@
+export function lookupDefinitionLabel(term?: string): string {
+  const trimmed = term?.trim();
+  return trimmed ? `Looking up “${trimmed}”…` : "Looking up…";
+}
+
+export function lookedUpSystemLine(term: string): string {
+  const trimmed = term.trim();
+  return trimmed ? `Looked up: ${trimmed}` : "Looked up definition";
+}
+
 export const LOOKUP_DEFINITION_TOOL = {
     type: "function" as const,
     name: "lookup_definition",
@@ -21,8 +31,15 @@ export const LOOKUP_DEFINITION_TOOL = {
     args: Record<string, unknown>;
   };
   
-  export function extractFunctionCall(event: {
+  export type RealtimeVoiceEvent = {
     type: string;
+    call_id?: string;
+    arguments?: string;
+    item?: {
+      type?: string;
+      name?: string;
+      call_id?: string;
+    };
     response?: {
       output?: Array<{
         type?: string;
@@ -31,7 +48,9 @@ export const LOOKUP_DEFINITION_TOOL = {
         arguments?: string;
       }>;
     };
-  }): RealtimeFunctionCall | null {
+  };
+
+  export function extractFunctionCall(event: RealtimeVoiceEvent): RealtimeFunctionCall | null {
     if (event.type !== "response.done") return null;
     const item = event.response?.output?.find((o) => o.type === "function_call");
     if (!item?.call_id || !item.name) return null;

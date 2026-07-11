@@ -40,31 +40,40 @@ export function Transcript({
           setFollowingLatest(distanceFromBottom < 32);
         }}
       >
-        {transcript.history.map((turn, index) => (
-          <p
-            key={index}
-            className={
-              turn.role === "user"
-                ? "ml-auto max-w-[85%] text-right"
-                : "max-w-[90%]"
-            }
-          >
-            <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-              {turn.role}
-            </span>
-            <br />
-            {turn.interrupted && (
-              <span className="mr-2 inline-flex rounded-lg border border-outline-variant bg-surface-container-low px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-                Interrupted
-              </span>
-            )}
-            <span
-              className={`whitespace-pre-wrap ${turn.interrupted ? "text-foreground/60" : ""}`}
+        {transcript.history.map((turn, index) =>
+          turn.role === "system" ? (
+            <p
+              key={index}
+              className="text-center text-xs text-on-surface-variant"
             >
               {turn.text}
-            </span>
-          </p>
-        ))}
+            </p>
+          ) : (
+            <p
+              key={index}
+              className={
+                turn.role === "user"
+                  ? "ml-auto max-w-[85%] text-right"
+                  : "max-w-[90%]"
+              }
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                {turn.role}
+              </span>
+              <br />
+              {turn.interrupted && (
+                <span className="mr-2 inline-flex rounded-lg border border-outline-variant bg-surface-container-low px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                  Interrupted
+                </span>
+              )}
+              <span
+                className={`whitespace-pre-wrap ${turn.interrupted ? "text-foreground/60" : ""}`}
+              >
+                {turn.text}
+              </span>
+            </p>
+          ),
+        )}
 
         {transcript.draftUser && (
           <p className="ml-auto max-w-[85%] text-right text-foreground/70 whitespace-pre-wrap">
