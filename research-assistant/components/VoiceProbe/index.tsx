@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ModeChrome } from "../ModeChrome";
 import { ImageAttachStrip } from "./ImageAttachStrip";
+import { VoiceStartPrompt } from "./VoiceStartPrompt";
 import { SessionDock } from "./SessionDock";
 import {
   reduceRealtimePhase,
@@ -379,6 +380,13 @@ export function VoiceProbe() {
           <p className="mt-3 max-w-md text-center text-base text-on-surface-variant">
             Quick spoken answers. Use Research for briefs and sources.
           </p>
+        )}
+        {sessionActive && (
+          <VoiceStartPrompt
+            phase={phase}
+            connected={connected}
+            hasTranscript={Boolean(hasTranscript)}
+          />
         )}
         {handoffDraft && (
           <div

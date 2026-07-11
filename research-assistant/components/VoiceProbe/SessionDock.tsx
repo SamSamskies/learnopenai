@@ -2,7 +2,7 @@ import { Spinner } from "../ResearchChat/icons";
 import type { RealtimePhase } from "./realtime-phase";
 
 const PHASE_COPY: Record<RealtimePhase, string> = {
-  idle: "Ready",
+  idle: "Start talking",
   connecting: "Connecting…",
   listening: "Listening…",
   thinking: "Thinking…",
@@ -76,6 +76,11 @@ export function SessionDock({
           {showIndicator && <PhaseIndicator phase={phase} />}
           <span className="truncate">{PHASE_COPY[phase]}</span>
         </div>
+        {phase === "idle" && (
+          <p className="mt-1 text-xs text-on-surface-variant">
+            Just speak — I&apos;ll listen automatically.
+          </p>
+        )}
 
         <div className="mt-3 flex items-center gap-3 text-xs">
           {phase === "speaking" && (
