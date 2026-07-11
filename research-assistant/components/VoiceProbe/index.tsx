@@ -350,6 +350,8 @@ export function VoiceProbe() {
     setPendingModeHref(href);
   }
 
+  const handoffDraft = formatVoiceHandoff(transcript);
+
   return (
     <div className="flex h-dvh flex-col bg-background">
       <ModeChrome onRequestNavigate={requestModeNavigate} />
@@ -362,24 +364,21 @@ export function VoiceProbe() {
         </p>
 
         <div className="mt-10">
-          <PhaseBadge phase={phase} connected={connected} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImagePick}
+          />
+          <PhaseBadge
+            phase={phase}
+            connected={connected}
+            attachedImage={attachedImage}
+            onAttachImage={() => fileInputRef.current?.click()}
+            onInterrupt={interrupt}
+          />
         </div>
-        {attachedImage && (
-          <div className="mt-4 flex flex-col items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={attachedImage.previewUrl}
-              alt=""
-              className="h-16 w-16 rounded-lg border border-outline-variant object-cover"
-            />
-            <p className="max-w-xs text-center text-sm text-on-surface-variant">
-              Attached — ask about this aloud.
-              <span className="mt-0.5 block truncate text-xs opacity-80">
-                {attachedImage.label}
-              </span>
-            </p>
-          </div>
-        )}
         {turnLatencyMs != null && (
           <p className="mt-3 text-center text-sm text-on-surface-variant">
             Last turn: {turnLatencyMs} ms
@@ -391,6 +390,20 @@ export function VoiceProbe() {
         <p className="mt-2 text-center text-xs text-on-surface-variant">
           {turnDetectionLabel()}
         </p>
+        {handoffDraft && (
+          <div className="mt-6 flex w-full max-w-xl flex-col items-stretch gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-on-surface-variant">
+              Ready for sources and a written brief?
+            </p>
+            <button
+              type="button"
+              onClick={() => setConfirmContinueResearch(true)}
+              className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-dark"
+            >
+              Continue in Research
+            </button>
+          </div>
+        )}
         <Transcript transcript={transcript} />
 
         {errorMessage && (
@@ -399,23 +412,7 @@ export function VoiceProbe() {
           </p>
         )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleImagePick}
-        />
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          {formatVoiceHandoff(transcript) && (
-            <button
-              type="button"
-              onClick={() => setConfirmContinueResearch(true)}
-              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-dark"
-            >
-              Continue in Research
-            </button>
-          )}
+        <div className="mt-8 flex flex-col items-center gap-2">
           {!connected ? (
             <button
               type="button"
@@ -430,33 +427,14 @@ export function VoiceProbe() {
                   : "Connect"}
             </button>
           ) : (
-            <>
-              {phase === "speaking" && (
-                <button
-                  type="button"
-                  onClick={interrupt}
-                  className="rounded-lg border border-outline-variant px-5 py-2.5 text-sm font-medium"
-                >
-                  Interrupt
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={disconnect}
-                className="rounded-lg border border-outline-variant bg-surface-container-low px-5 py-2.5 text-sm font-medium text-foreground hover:bg-surface-container"
-              >
-                Disconnect
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={disconnect}
+              className="text-sm text-on-surface-variant underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              Disconnect
+            </button>
           )}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={!connected}
-            className="rounded-lg border border-outline-variant px-5 py-2.5 text-sm font-medium hover:bg-surface-container-low disabled:opacity-50"
-          >
-            Attach image
-          </button>
         </div>
       </div>
 
@@ -476,7 +454,7 @@ export function VoiceProbe() {
         open={pendingModeHref != null}
         title="Switch to Research?"
         description={
-          formatVoiceHandoff(transcript)
+          handoffDraft
             ? "This ends your voice session. Use Continue in Research first if you want the conversation copied over."
             : "This ends your voice session."
         }
