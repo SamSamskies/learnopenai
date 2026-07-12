@@ -76,4 +76,18 @@ describe("formatVoiceHandoff", () => {
     expect(draft).not.toContain("draftAssistant");
     expect(draft).toBe(`${PREFIX}User: Only committed history`);
   });
+
+  it("excludes system turns from the handoff transcript", () => {
+    const draft = formatVoiceHandoff({
+      history: [
+        { role: "user", text: "Question" },
+        { role: "system", text: "Looked up: RAG" },
+        { role: "assistant", text: "Answer" },
+      ],
+      draftUser: "",
+    });
+
+    expect(draft).toBe(`${PREFIX}User: Question\nAssistant: Answer`);
+    expect(draft).not.toContain("Looked up");
+  });
 });

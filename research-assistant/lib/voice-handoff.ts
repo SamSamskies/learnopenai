@@ -1,7 +1,7 @@
 const HANDOFF_KEY = "voiceResearchHandoff";
 
 type VoiceTurn = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   text: string;
   interrupted?: boolean;
 };
