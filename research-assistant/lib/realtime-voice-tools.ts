@@ -73,4 +73,40 @@ export const LOOKUP_DEFINITION_TOOL = {
       },
     };
   }
+
+  export const STAGE_RESEARCH_BRIEF_TOOL = {
+    type: "function" as const,
+    name: "stage_research_brief",
+    description:
+      "When the user wants a sourced research brief, citations, or deep lookup — not a quick definition — stage the topic for Research mode.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The research topic or question to stage",
+        },
+      },
+      required: ["query"],
+    },
+  };
+  
+  export const VOICE_TOOLS = [
+    LOOKUP_DEFINITION_TOOL,
+    STAGE_RESEARCH_BRIEF_TOOL,
+  ] as const;
+  
+  export function toolApprovalLabel(name: string): string {
+    if (name === STAGE_RESEARCH_BRIEF_TOOL.name) {
+      return "Waiting for your approval…";
+    }
+    return "Waiting for approval…";
+  }
+  
+  export function rejectedToolOutput(callId: string) {
+    return functionOutputEvent(callId, {
+      rejected: true,
+      reason: "user_declined",
+    });
+  }
   

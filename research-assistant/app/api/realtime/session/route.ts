@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
 import { REALTIME_TURN_DETECTION } from '@/lib/realtime-turn-detection';
-import { LOOKUP_DEFINITION_TOOL } from '@/lib/realtime-voice-tools';
+import { VOICE_TOOLS } from '@/lib/realtime-voice-tools';
 
 const openai = new OpenAI();
 
@@ -11,7 +11,7 @@ export async function POST() {
       session: {
         type: 'realtime',
         model: 'gpt-realtime-2.1-mini',
-        tools: [LOOKUP_DEFINITION_TOOL],
+        tools: [...VOICE_TOOLS],
         tool_choice: "auto",
         instructions: [
           'You are the voice mode of a research assistant.',
@@ -23,6 +23,9 @@ export async function POST() {
           'Do not invent precise numbers from charts unless clearly legible.',
           'When the user asks what a term means, call lookup_definition instead of guessing.',
           'After a lookup, paraphrase the definition in one short spoken sentence.',
+          'Use lookup_definition only for quick term definitions.',
+          'Use stage_research_brief when the user wants sources or a written brief.',
+          'If stage_research_brief is rejected, acknowledge briefly and offer to stay in voice.',
         ].join(' '),
         audio: {
           input: {

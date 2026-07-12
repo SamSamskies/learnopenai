@@ -44,3 +44,16 @@ export function takeVoiceHandoff(): string | null {
   sessionStorage.removeItem(HANDOFF_KEY);
   return draft;
 }
+
+export function formatStagedResearchHandoff(
+  source: VoiceHandoffSource,
+  query: string,
+): string | null {
+  const trimmed = query.trim();
+  const context = formatVoiceHandoff(source);
+  if (!trimmed && !context) return null;
+  const header = trimmed
+    ? `Research this topic with sources: ${trimmed}`
+    : "Continue this as a source-backed research task.";
+  return context ? `${header}\n\n${context}` : header;
+}

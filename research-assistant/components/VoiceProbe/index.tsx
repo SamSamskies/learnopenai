@@ -13,6 +13,7 @@ import {
 } from "./realtime-phase";
 import { Transcript } from "./Transcript";
 import {
+  formatStagedResearchHandoff,
   formatVoiceHandoff,
   saveVoiceHandoff,
 } from "@/lib/voice-handoff";
@@ -34,9 +35,17 @@ import {
   LOOKUP_DEFINITION_TOOL,
   lookupDefinitionLabel,
   lookedUpSystemLine,
+  rejectedToolOutput,
+  STAGE_RESEARCH_BRIEF_TOOL,
+  toolApprovalLabel,
   type RealtimeFunctionCall,
   type RealtimeVoiceEvent,
 } from "@/lib/realtime-voice-tools";
+
+type PendingToolApproval = {
+  call: RealtimeFunctionCall;
+  query: string;
+};
 
 export { reduceRealtimePhase, type RealtimePhase } from "./realtime-phase";
 export {
@@ -72,6 +81,9 @@ export function VoiceProbe() {
   const [confirmContinueResearch, setConfirmContinueResearch] = useState(false);
   const [attachedImage, setAttachedImage] = useState<PreparedImage | null>(null);
   const [toolLabel, setToolLabel] = useState<string | null>(null);
+  const [pendingTool, setPendingTool] =
+    useState<PendingToolApproval | null>(null);
+  const [researchStaged, setResearchStaged] = useState(false);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -139,6 +151,57 @@ export function VoiceProbe() {
     } catch {
       clearLookupLabel();
     }
+  }
+
+  function handleFunctionCall(call: RealtimeFunctionCall) {
+    if (call.name === LOOKUP_DEFINITION_TOOL.name) {
+      void runVoiceTool(call);
+      return;
+    }
+    if (call.name === STAGE_RESEARCH_BRIEF_TOOL.name) {
+      const query = String(call.args.query ?? "").trim();
+      setPendingTool({ call, query });
+      setToolLabel(toolApprovalLabel(call.name));
+      return;
+    }
+  }
+
+  function resolveToolApproval(approved: boolean) {
+    const pending = pendingTool;
+    if (!pending) return;
+    setPendingTool(null);
+    setToolLabel(null);
+
+    const dc = dcRef.current;
+    if (dc?.readyState !== "open") return;
+
+    if (approved) {
+      const draft = formatStagedResearchHandoff(
+        { history: transcript.history, draftUser: transcript.draftUser },
+        pending.query,
+      );
+      if (draft) saveVoiceHandoff(draft);
+      setTranscript((t) =>
+        appendSystemTurn(
+          t,
+          pending.query
+            ? `Staged for Research: ${pending.query}`
+            : "Staged for Research",
+        ),
+      );
+      setResearchStaged(true);
+      dc.send(
+        JSON.stringify(
+          functionOutputEvent(pending.call.callId, {
+            staged: true,
+            query: pending.query,
+          }),
+        ),
+      );
+    } else {
+      dc.send(JSON.stringify(rejectedToolOutput(pending.call.callId)));
+    }
+    dc.send(JSON.stringify({ type: "response.create" }));
   }
 
   function trackLatency(event: { type: string }) {
@@ -264,6 +327,7 @@ export function VoiceProbe() {
     setErrorMessage(null);
     if (!isReconnect) {
       setTranscript(emptyTranscript);
+      setResearchStaged(false);
     }
     setPhase("connecting");
     setConnected(false);
@@ -326,7 +390,7 @@ export function VoiceProbe() {
         const call = extractFunctionCall(event);
         if (call && !handledCalls.current.has(call.callId)) {
           handledCalls.current.add(call.callId);
-          void runVoiceTool(call);
+          handleFunctionCall(call);
         }
       };
       attachConnectionHandlers(pc, dc);
@@ -401,6 +465,7 @@ export function VoiceProbe() {
     speechStoppedAt.current = null;
     handledCalls.current.clear();
     clearLookupLabel();
+    setPendingTool(null);
     releaseConnection();
     setAttachedImage(null);
     setPhase("idle");
@@ -410,6 +475,12 @@ export function VoiceProbe() {
   function continueInResearch() {
     const draft = formatVoiceHandoff(transcript);
     if (draft) saveVoiceHandoff(draft);
+    disconnect();
+    router.push("/");
+  }
+
+  function openStagedResearch() {
+    setResearchStaged(false);
     disconnect();
     router.push("/");
   }
@@ -465,28 +536,38 @@ export function VoiceProbe() {
             hasTranscript={Boolean(hasTranscript)}
           />
         )}
-        {handoffDraft && (
+        {(researchStaged || (handoffDraft && pendingTool == null)) && (
           <div
             className={`flex w-full max-w-xl flex-col items-stretch gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
               sessionActive ? "mt-6" : "mt-10"
             }`}
           >
             <p className="text-sm text-on-surface-variant">
-              Ready for sources and a written brief?
+              {researchStaged
+                ? "Draft staged — open Research when you’re ready."
+                : "Ready for sources and a written brief?"}
             </p>
             <button
               type="button"
-              onClick={() => setConfirmContinueResearch(true)}
+              onClick={
+                researchStaged
+                  ? openStagedResearch
+                  : () => setConfirmContinueResearch(true)
+              }
               className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-dark"
             >
-              Continue in Research
+              {researchStaged ? "Open Research" : "Continue in Research"}
             </button>
           </div>
         )}
         {(sessionActive || hasTranscript) && (
           <div
             className={`w-full max-w-xl space-y-3 ${
-              sessionActive ? "mt-6" : handoffDraft ? "mt-6" : "mt-10"
+              sessionActive
+                ? "mt-6"
+                : handoffDraft || researchStaged
+                  ? "mt-6"
+                  : "mt-10"
             }`}
           >
             {sessionActive && (
@@ -553,6 +634,19 @@ export function VoiceProbe() {
           continueInResearch();
         }}
         onCancel={() => setConfirmContinueResearch(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingTool != null}
+        title="Stage this for Research?"
+        description={
+          pendingTool?.query
+            ? `This saves a draft and ends voice when you switch: “${pendingTool.query}”`
+            : "This saves a research draft you can open in Research mode."
+        }
+        confirmLabel="Stage draft"
+        onConfirm={() => resolveToolApproval(true)}
+        onCancel={() => resolveToolApproval(false)}
       />
 
       <ConfirmDialog
