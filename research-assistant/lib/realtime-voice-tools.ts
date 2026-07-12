@@ -90,15 +90,37 @@ export const LOOKUP_DEFINITION_TOOL = {
       required: ["query"],
     },
   };
+
+  export const GENERATE_ILLUSTRATION_TOOL = {
+    type: "function" as const,
+    name: "generate_illustration",
+    description:
+      "Create a simple illustration or diagram when the user asks to draw, sketch, visualize, or generate an image. Pass a detailed visual prompt.",
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description: "Detailed description of the image to generate",
+        },
+      },
+      required: ["prompt"],
+    },
+  };
+  
   
   export const VOICE_TOOLS = [
     LOOKUP_DEFINITION_TOOL,
     STAGE_RESEARCH_BRIEF_TOOL,
+    GENERATE_ILLUSTRATION_TOOL,
   ] as const;
   
   export function toolApprovalLabel(name: string): string {
     if (name === STAGE_RESEARCH_BRIEF_TOOL.name) {
       return "Waiting for your approval…";
+    }
+    if (name === GENERATE_ILLUSTRATION_TOOL.name) {
+      return "Confirm the image prompt…";
     }
     return "Waiting for approval…";
   }
@@ -110,3 +132,6 @@ export const LOOKUP_DEFINITION_TOOL = {
     });
   }
   
+export function generatingImageLabel(): string {
+  return "Generating image…";
+}

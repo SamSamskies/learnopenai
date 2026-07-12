@@ -21,6 +21,7 @@ import {
   emptyTranscript,
   reduceTranscript,
   appendSystemTurn,
+  appendImageTurn,
   type TranscriptState,
 } from "./transcript-reducer";
 import { turnDetectionLabel } from "@/lib/realtime-turn-detection";
@@ -32,6 +33,8 @@ import {
 import {
   extractFunctionCall,
   functionOutputEvent,
+  GENERATE_ILLUSTRATION_TOOL,
+  generatingImageLabel,
   LOOKUP_DEFINITION_TOOL,
   lookupDefinitionLabel,
   lookedUpSystemLine,
@@ -41,10 +44,16 @@ import {
   type RealtimeFunctionCall,
   type RealtimeVoiceEvent,
 } from "@/lib/realtime-voice-tools";
+import { ImageGenApproval } from "./ImageGenApproval";
 
 type PendingToolApproval = {
   call: RealtimeFunctionCall;
   query: string;
+};
+
+type PendingImageGen = {
+  call: RealtimeFunctionCall;
+  prompt: string;
 };
 
 export { reduceRealtimePhase, type RealtimePhase } from "./realtime-phase";
@@ -83,6 +92,9 @@ export function VoiceProbe() {
   const [toolLabel, setToolLabel] = useState<string | null>(null);
   const [pendingTool, setPendingTool] =
     useState<PendingToolApproval | null>(null);
+  const [pendingImage, setPendingImage] = useState<PendingImageGen | null>(
+    null,
+  );
   const [researchStaged, setResearchStaged] = useState(false);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -164,6 +176,60 @@ export function VoiceProbe() {
       setToolLabel(toolApprovalLabel(call.name));
       return;
     }
+    if (call.name === GENERATE_ILLUSTRATION_TOOL.name) {
+      const prompt = String(call.args.prompt ?? "").trim();
+      setPendingImage({ call, prompt });
+      setToolLabel(toolApprovalLabel(call.name));
+      return;
+    }
+  }
+
+  async function resolveImageGen(approved: boolean, editedPrompt: string) {
+    const pending = pendingImage;
+    if (!pending) return;
+    setPendingImage(null);
+
+    const dc = dcRef.current;
+    if (dc?.readyState !== "open") return;
+
+    if (!approved) {
+      setToolLabel(null);
+      dc.send(JSON.stringify(rejectedToolOutput(pending.call.callId)));
+      dc.send(JSON.stringify({ type: "response.create" }));
+      return;
+    }
+
+    setToolLabel(generatingImageLabel());
+    try {
+      const res = await fetch("/api/voice/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: editedPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.imageDataUrl) throw new Error(data.error ?? "failed");
+
+      setTranscript((t) => appendImageTurn(t, editedPrompt, data.imageDataUrl));
+      dc.send(
+        JSON.stringify(
+          functionOutputEvent(pending.call.callId, {
+            ok: true,
+            note: "Image is on screen. Describe it in one short spoken sentence.",
+          }),
+        ),
+      );
+    } catch {
+      dc.send(
+        JSON.stringify(
+          functionOutputEvent(pending.call.callId, {
+            ok: false,
+            error: "generation_failed",
+          }),
+        ),
+      );
+    }
+    setToolLabel(null);
+    dc.send(JSON.stringify({ type: "response.create" }));
   }
 
   function resolveToolApproval(approved: boolean) {
@@ -466,6 +532,7 @@ export function VoiceProbe() {
     handledCalls.current.clear();
     clearLookupLabel();
     setPendingTool(null);
+    setPendingImage(null);
     releaseConnection();
     setAttachedImage(null);
     setPhase("idle");
@@ -536,7 +603,8 @@ export function VoiceProbe() {
             hasTranscript={Boolean(hasTranscript)}
           />
         )}
-        {(researchStaged || (handoffDraft && pendingTool == null)) && (
+        {(researchStaged ||
+          (handoffDraft && pendingTool == null && pendingImage == null)) && (
           <div
             className={`flex w-full max-w-xl flex-col items-stretch gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
               sessionActive ? "mt-6" : "mt-10"
@@ -647,6 +715,17 @@ export function VoiceProbe() {
         confirmLabel="Stage draft"
         onConfirm={() => resolveToolApproval(true)}
         onCancel={() => resolveToolApproval(false)}
+      />
+
+      <ImageGenApproval
+        open={pendingImage != null}
+        initialPrompt={pendingImage?.prompt ?? ""}
+        onGenerate={(editedPrompt) => {
+          void resolveImageGen(true, editedPrompt);
+        }}
+        onCancel={() => {
+          void resolveImageGen(false, "");
+        }}
       />
 
       <ConfirmDialog

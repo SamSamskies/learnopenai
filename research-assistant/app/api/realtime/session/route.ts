@@ -26,6 +26,8 @@ export async function POST() {
           'Use lookup_definition only for quick term definitions.',
           'Use stage_research_brief when the user wants sources or a written brief.',
           'If stage_research_brief is rejected, acknowledge briefly and offer to stay in voice.',
+          'Call generate_illustration when the user asks to draw, sketch, visualize, or generate an image.',
+          'If generate_illustration is rejected, acknowledge briefly and stay in voice.',
         ].join(' '),
         audio: {
           input: {

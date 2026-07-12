@@ -3,6 +3,7 @@ import {
   emptyTranscript,
   reduceTranscript,
   appendSystemTurn,
+  appendImageTurn,
   type TranscriptState,
 } from "./transcript-reducer";
 
@@ -123,6 +124,22 @@ describe("reduceTranscript", () => {
   it("appends a system turn", () => {
     expect(appendSystemTurn(emptyTranscript, "Looked up: RAG")).toEqual({
       history: [{ role: "system", text: "Looked up: RAG" }],
+      draftUser: "",
+      draftAssistant: "",
+    });
+  });
+
+  it("appends an image turn", () => {
+    expect(
+      appendImageTurn(emptyTranscript, "a red cube", "data:image/png;base64,abc"),
+    ).toEqual({
+      history: [
+        {
+          role: "assistant",
+          text: "a red cube",
+          imageUrl: "data:image/png;base64,abc",
+        },
+      ],
       draftUser: "",
       draftAssistant: "",
     });

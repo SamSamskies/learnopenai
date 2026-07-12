@@ -49,7 +49,7 @@ export function Transcript({
               {turn.text}
             </p>
           ) : (
-            <p
+            <div
               key={index}
               className={
                 turn.role === "user"
@@ -71,7 +71,15 @@ export function Transcript({
               >
                 {turn.text}
               </span>
-            </p>
+              {turn.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- data URLs from generation
+                <img
+                  src={turn.imageUrl}
+                  alt={turn.text}
+                  className="mt-2 w-full rounded-xl border border-outline-variant"
+                />
+              )}
+            </div>
           ),
         )}
 

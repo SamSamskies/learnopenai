@@ -2,6 +2,7 @@ export type Turn = {
   role: "user" | "assistant" | "system";
   text: string;
   interrupted?: boolean;
+  imageUrl?: string;
 };
 
 export function appendSystemTurn(
@@ -12,6 +13,20 @@ export function appendSystemTurn(
   return {
     ...state,
     history: [...state.history, { role: "system", text }],
+  };
+}
+
+export function appendImageTurn(
+  state: TranscriptState,
+  prompt: string,
+  imageUrl: string,
+): TranscriptState {
+  return {
+    ...state,
+    history: [
+      ...state.history,
+      { role: "assistant", text: prompt, imageUrl },
+    ],
   };
 }
 
