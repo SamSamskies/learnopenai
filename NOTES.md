@@ -34,6 +34,10 @@ Responses API, streaming, tool calling, structured outputs, image generation, fi
 - **Lesson 35:** Apply `DESIGN.md` to `ResearchChat.tsx` — visuals only, behavior unchanged.
 - **Reference:** [reference/google-stitch.html](./reference/google-stitch.html).
 
+## Future lessons
+
+- **Model routing:** Lesson 13 covered effort / latency–cost–quality and when-not-to-use reasoning, but not product routing. Teach: (1) when one strong reasoning call replaces a multi-step agent chain, (2) route hard tasks → reasoning models, easy → fast/nano. Builds on Lesson 13 + Agents SDK (18).
+
 ## Preferences
 
 - **No org ID / KYC:** Will not verify OpenAI organization for gated features (e.g. reasoning summaries). Practice scripts should not require it.
